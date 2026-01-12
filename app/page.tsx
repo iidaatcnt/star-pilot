@@ -16,6 +16,7 @@ type Config = {
     vSens: number;
     hSens: number;
     vOffset: number;
+    duration: number;
 };
 
 // --- Components ---
@@ -68,7 +69,9 @@ const Rings = ({ speed, onPass, shipX, shipY, isPaused }: { speed: number; onPas
             z: -30 - i * 30,
             x: (Math.random() - 0.5) * 12,
             y: (Math.random() - 0.5) * 10,
-            passed: false
+            passed: false,
+            scale: 1,
+            opacity: 0.3
         }));
     }, []);
 
@@ -78,26 +81,34 @@ const Rings = ({ speed, onPass, shipX, shipY, isPaused }: { speed: number; onPas
         if (!groupRef.current || isPaused) return;
         groupRef.current.children.forEach((child, i) => {
             const r = rings[i];
-            r.z += (speed * 80 + 10) * delta;
-
-            // Collision detection - when ring is near camera
-            if (!r.passed && r.z > 5 && r.z < 8) {
-                const dx = Math.abs(r.x - shipX);
-                const dy = Math.abs(r.y - shipY);
-                if (dx < 4 && dy < 4) {
-                    r.passed = true;
-                    onPass();
+            if (r.passed) {
+                r.scale += delta * 15;
+                r.opacity -= delta * 2;
+                r.z += speed * 20 * delta;
+            } else {
+                r.z += (speed * 80 + 10) * delta;
+                if (r.z > 5 && r.z < 8) {
+                    const dx = Math.abs(r.x - shipX);
+                    const dy = Math.abs(r.y - shipY);
+                    if (dx < 4 && dy < 4) {
+                        r.passed = true;
+                        onPass();
+                    }
                 }
             }
 
-            if (r.z > 20) {
+            if (r.z > 20 || r.opacity <= 0) {
                 r.z = -70;
                 r.x = (Math.random() - 0.5) * 18;
                 r.y = (Math.random() - 0.5) * 12;
                 r.passed = false;
+                r.scale = 1;
+                r.opacity = 0.3;
             }
             child.position.set(r.x, r.y, r.z);
-            child.rotation.z += delta * 0.5;
+            child.scale.setScalar(r.scale);
+            const mat = (child as THREE.Mesh).material as THREE.MeshBasicMaterial;
+            mat.opacity = Math.max(0, r.opacity);
         });
     });
 
@@ -106,7 +117,7 @@ const Rings = ({ speed, onPass, shipX, shipY, isPaused }: { speed: number; onPas
             {rings.map((r) => (
                 <mesh key={r.id}>
                     <torusGeometry args={[4, 0.1, 16, 32]} />
-                    <meshBasicMaterial color={r.passed ? "#fff" : "#00f2ff"} transparent opacity={0.3} />
+                    <meshBasicMaterial color="#00f2ff" transparent opacity={0.3} />
                 </mesh>
             ))}
         </group>
@@ -168,9 +179,9 @@ const GameScene = ({ handData, config, onPass, onSpeedChange, isPaused }: { hand
         setSpeed(nextSpeed);
         onSpeedChange(nextSpeed);
 
-        // Apply sensitivity and offset
+        // Position Clamping
         const adjYaw = handData.yaw * config.hSens;
-        const adjPitch = (handData.pitch + config.vOffset * 0.5) * config.vSens; // Offset multiplier reduced for fine control
+        const adjPitch = (handData.pitch + config.vOffset * 0.5) * config.vSens;
 
         const targetX = -adjYaw * 8;
         const targetY = adjPitch * 6;
@@ -205,18 +216,23 @@ const GameScene = ({ handData, config, onPass, onSpeedChange, isPaused }: { hand
 
 const ConfigMenu = ({ config, setConfig }: { config: Config; setConfig: (c: Config) => void }) => (
     <div className="flex flex-col gap-6 mono uppercase text-[11px]">
-        <div className="flex flex-col gap-3">
-            <label className="text-cyan-500/60 flex justify-between">Vertical Sensitivity <span>{config.vSens.toFixed(1)}x</span></label>
-            <input type="range" min="0.5" max="3.0" step="0.1" value={config.vSens} onChange={e => setConfig({ ...config, vSens: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
-        </div>
-        <div className="flex flex-col gap-3">
-            <label className="text-cyan-500/60 flex justify-between">Horizontal Sensitivity <span>{config.hSens.toFixed(1)}x</span></label>
-            <input type="range" min="0.5" max="3.0" step="0.1" value={config.hSens} onChange={e => setConfig({ ...config, hSens: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
-        </div>
-        <div className="flex flex-col gap-3">
-            <label className="text-cyan-500/60 flex justify-between">Hand Height Offset <span>{config.vOffset > 0 ? 'LOWER' : 'HIGHER'}</span></label>
-            <input type="range" min="-1.0" max="1.0" step="0.05" value={config.vOffset} onChange={e => setConfig({ ...config, vOffset: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
-            <p className="text-[8px] text-white/30 lowercase text-right">※ 手を高く上げにくい方は LOWER (右側) へ</p>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+            <div className="flex flex-col gap-3">
+                <label className="text-cyan-500/60 flex justify-between">Vertical Sens <span>{config.vSens.toFixed(1)}x</span></label>
+                <input type="range" min="0.5" max="3.0" step="0.1" value={config.vSens} onChange={e => setConfig({ ...config, vSens: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
+            </div>
+            <div className="flex flex-col gap-3">
+                <label className="text-cyan-500/60 flex justify-between">Horizontal Sens <span>{config.hSens.toFixed(1)}x</span></label>
+                <input type="range" min="0.5" max="3.0" step="0.1" value={config.hSens} onChange={e => setConfig({ ...config, hSens: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
+            </div>
+            <div className="flex flex-col gap-3">
+                <label className="text-cyan-500/60 flex justify-between">Hand Height <span>{config.vOffset > 0 ? 'LOW' : 'HIGH'}</span></label>
+                <input type="range" min="-1.0" max="1.0" step="0.05" value={config.vOffset} onChange={e => setConfig({ ...config, vOffset: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
+            </div>
+            <div className="flex flex-col gap-3">
+                <label className="text-cyan-500/60 flex justify-between">Mission Time <span>{config.duration}s</span></label>
+                <input type="range" min="30" max="300" step="30" value={config.duration} onChange={e => setConfig({ ...config, duration: parseInt(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
+            </div>
         </div>
     </div>
 );
@@ -229,10 +245,11 @@ export default function StarPilot() {
 
     const [gameState, setGameState] = useState<'start' | 'playing' | 'result'>('start');
     const [isPaused, setIsPaused] = useState(false);
-    const [config, setConfig] = useState<Config>({ vSens: 1.2, hSens: 1.2, vOffset: 0.2 });
+    const [config, setConfig] = useState<Config>({ vSens: 1.2, hSens: 1.2, vOffset: 0.2, duration: 30 });
     const [currentSpeed, setCurrentSpeed] = useState(0);
     const [score, setScore] = useState(0);
-    const [flightTime, setFlightTime] = useState(0);
+    const [timeLeft, setTimeLeft] = useState(30);
+    const [showScorePopup, setShowScorePopup] = useState(false);
 
     const audioCtxRef = useRef<AudioContext | null>(null);
     const engineOscRef = useRef<OscillatorNode | null>(null);
@@ -240,20 +257,25 @@ export default function StarPilot() {
 
     useEffect(() => {
         let timer: any;
-        if (gameState === 'playing' && !isPaused && currentSpeed > 0.1) {
+        if (gameState === 'playing' && !isPaused) {
             timer = setInterval(() => {
-                setFlightTime(t => t + 1);
+                setTimeLeft(t => {
+                    if (t <= 1) {
+                        setGameState('result');
+                        return 0;
+                    }
+                    return t - 1;
+                });
             }, 1000);
         }
         return () => clearInterval(timer);
-    }, [gameState, isPaused, currentSpeed]);
+    }, [gameState, isPaused]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.code === 'Space') {
                 if (gameState === 'start') {
-                    setGameState('playing');
-                    audioCtxRef.current?.resume();
+                    launchMission();
                 } else if (gameState === 'playing') {
                     setIsPaused(p => !p);
                 }
@@ -261,27 +283,23 @@ export default function StarPilot() {
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [gameState]);
+    }, [gameState, config]);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && !audioCtxRef.current) {
             audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-
             const osc = audioCtxRef.current.createOscillator();
             const gain = audioCtxRef.current.createGain();
             osc.type = 'sawtooth';
             osc.frequency.setValueAtTime(50, audioCtxRef.current.currentTime);
             gain.gain.setValueAtTime(0, audioCtxRef.current.currentTime);
-
             const filter = audioCtxRef.current.createBiquadFilter();
             filter.type = 'lowpass';
             filter.frequency.setValueAtTime(400, audioCtxRef.current.currentTime);
-
             osc.connect(filter);
             filter.connect(gain);
             gain.connect(audioCtxRef.current.destination);
             osc.start();
-
             engineOscRef.current = osc;
             engineGainRef.current = gain;
         }
@@ -294,19 +312,29 @@ export default function StarPilot() {
     useEffect(() => {
         if (engineGainRef.current && engineOscRef.current && audioCtxRef.current) {
             const now = audioCtxRef.current.currentTime;
-            const targetVol = (isPaused) ? 0 : currentSpeed * 0.1;
+            const targetVol = (isPaused || gameState === 'result') ? 0 : currentSpeed * 0.1;
             engineGainRef.current.gain.setTargetAtTime(targetVol, now, 0.1);
             engineOscRef.current.frequency.setTargetAtTime(40 + currentSpeed * 120, now, 0.1);
         }
-    }, [currentSpeed, isPaused]);
+    }, [currentSpeed, isPaused, gameState]);
+
+    const launchMission = () => {
+        setGameState('playing');
+        setTimeLeft(config.duration);
+        setScore(0);
+        audioCtxRef.current?.resume();
+    };
 
     const handlePass = () => {
         setScore(s => s + 100);
+        setShowScorePopup(true);
+        setTimeout(() => setShowScorePopup(false), 800);
+
         if (audioCtxRef.current) {
             const osc = audioCtxRef.current.createOscillator();
             const g = audioCtxRef.current.createGain();
             osc.frequency.setValueAtTime(880, audioCtxRef.current.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(440, audioCtxRef.current.currentTime + 0.1);
+            osc.frequency.exponentialRampToValueAtTime(1320, audioCtxRef.current.currentTime + 0.1);
             g.gain.setValueAtTime(0.1, audioCtxRef.current.currentTime);
             g.gain.exponentialRampToValueAtTime(0.01, audioCtxRef.current.currentTime + 0.1);
             osc.connect(g);
@@ -319,11 +347,8 @@ export default function StarPilot() {
     return (
         <div
             className="relative w-full h-screen bg-black overflow-hidden font-sans select-none"
-            onClick={() => {
-                if (gameState === 'playing') setIsPaused(true);
-            }}
+            onClick={() => { if (gameState === 'playing') setIsPaused(true); }}
         >
-
             {gameState === 'start' && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl">
                     <motion.div
@@ -334,23 +359,17 @@ export default function StarPilot() {
                             <h1 className="text-5xl font-black italic tracking-tighter text-cyan-400 mb-2 underline decoration-cyan-500/50 underline-offset-8">STAR_PILOT</h1>
                             <p className="mono text-[10px] text-white/40 tracking-[0.3em] uppercase mt-4">Health Training & Space Exploration</p>
                         </div>
-
                         <ConfigMenu config={config} setConfig={setConfig} />
-
                         <button
-                            onClick={() => {
-                                setGameState('playing');
-                                audioCtxRef.current?.resume();
-                            }}
+                            onClick={(e) => { e.stopPropagation(); launchMission(); }}
                             className="w-full py-4 bg-cyan-500 text-black font-black text-xl hover:bg-white transition-colors uppercase tracking-widest shadow-[0_0_30px_rgba(0,242,255,0.5)]"
                         >
                             Launch Mission
                         </button>
-
                         <div className="text-[9px] text-white/30 text-center uppercase leading-loose border-t border-white/5 pt-4">
-                            &gt; PALM_OPEN TO START ENGINE<br />
-                            &gt; TILT_HAND TO STEER<br />
-                            &gt; CLEAR RINGS TO SCORE
+                            &gt; SPACE_KEY OR CLICK TO START<br />
+                            &gt; PALM_OPEN TO THRUST<br />
+                            &gt; TILT_HAND TO STEER
                         </div>
                     </motion.div>
                 </div>
@@ -364,20 +383,18 @@ export default function StarPilot() {
                         onClick={(e) => e.stopPropagation()}
                     >
                         <h2 className="text-3xl font-black italic text-cyan-400 uppercase tracking-tighter">Mission Pawsed</h2>
-
                         <div className="border-y border-white/5 py-6">
                             <ConfigMenu config={config} setConfig={setConfig} />
                         </div>
-
                         <div className="flex flex-col gap-3">
                             <button
                                 onClick={(e) => { e.stopPropagation(); setIsPaused(false); }}
                                 className="w-full py-3 bg-cyan-500 text-black font-bold uppercase tracking-widest hover:bg-white transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)]"
                             >
-                                Resume
+                                Resume Mission
                             </button>
                             <button
-                                onClick={(e) => { e.stopPropagation(); setGameState('start'); setIsPaused(false); setScore(0); setFlightTime(0); }}
+                                onClick={(e) => { e.stopPropagation(); setGameState('start'); setIsPaused(false); }}
                                 className="w-full py-3 border border-white/20 text-white/60 font-bold uppercase tracking-widest hover:bg-white/10 transition-all"
                             >
                                 Quit to Menu
@@ -387,6 +404,7 @@ export default function StarPilot() {
                 </div>
             )}
 
+            {/* HUD Layers */}
             <div className="absolute inset-x-0 top-0 z-50 p-8 flex justify-between items-start pointer-events-none">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-3">
@@ -394,8 +412,11 @@ export default function StarPilot() {
                         <h1 className="text-3xl font-black italic tracking-tighter uppercase text-white/90">PILOT_LINK_ALPHA</h1>
                     </div>
                     <div className="flex gap-4 opacity-70 mono text-[10px] text-cyan-400">
-                        <span className="bg-cyan-500/10 px-2 py-1 border border-cyan-500/20 shadow-[0_0_10px_rgba(0,242,255,0.2)]">SCORE: {score.toString().padStart(6, '0')}</span>
-                        <span className="bg-cyan-500/10 px-2 py-1 border border-cyan-500/20">FLIGHT_TIME: {Math.floor(flightTime / 60)}:{(flightTime % 60).toString().padStart(2, '0')}</span>
+                        <motion.span
+                            key={score} animate={{ scale: [1, 1.3, 1] }}
+                            className="bg-cyan-500/10 px-2 py-1 border border-cyan-500/20 shadow-[0_0_10px_rgba(0,242,255,0.2)]"
+                        >SCORE: {score.toString().padStart(6, '0')}</motion.span>
+                        <span className={`bg-cyan-500/10 px-2 py-1 border border-cyan-500/20 ${timeLeft < 10 ? 'text-red-500 border-red-500 animate-pulse' : ''}`}>TIME_LEFT: {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</span>
                         <span className="bg-cyan-500/10 px-2 py-1 border border-cyan-500/20">VELOCITY: {Math.round(currentSpeed * 300)} KM/S</span>
                     </div>
                     <div className="flex gap-4 opacity-50 mono text-[9px] mt-1">
@@ -430,14 +451,8 @@ export default function StarPilot() {
                             />
                         </div>
                     </div>
-
                     <div className="relative w-48 h-48 border border-white/10 rounded-full flex items-center justify-center">
                         <div className="absolute inset-0 border-[0.5px] border-cyan-500/20 rounded-full animate-spin-slow" />
-                        <div className="w-0.5 h-12 bg-white/10 absolute top-0" />
-                        <div className="w-0.5 h-12 bg-white/10 absolute bottom-0" />
-                        <div className="w-12 h-0.5 bg-white/10 absolute left-0" />
-                        <div className="w-12 h-0.5 bg-white/10 absolute right-0" />
-
                         <motion.div
                             className="absolute w-8 h-8 border border-cyan-500/50 flex items-center justify-center"
                             animate={{ x: handData.yaw * 60, y: -handData.pitch * 60 }}
@@ -446,7 +461,6 @@ export default function StarPilot() {
                             <Target size={14} className="text-cyan-400/50" />
                         </motion.div>
                     </div>
-
                     <div className="bg-white/5 backdrop-blur-sm p-4 border-l-2 border-cyan-500/50 mono text-[8px] uppercase tracking-[0.2em] leading-loose text-white/40">
                         <span className="text-cyan-400">&gt; PALM_OPEN:</span> ACCEL<br />
                         <span className="text-cyan-400">&gt; FIST:</span> BREAK<br />
@@ -456,6 +470,16 @@ export default function StarPilot() {
             </div>
 
             <AnimatePresence>
+                {showScorePopup && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.5, y: -20 }}
+                        animate={{ opacity: 1, scale: 1.5, y: -100 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed left-1/2 top-1/2 z-[100] -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                    >
+                        <span className="text-6xl font-black italic text-cyan-400 drop-shadow-[0_0_20px_#0ff] tracking-tighter">+100</span>
+                    </motion.div>
+                )}
                 {currentSpeed > 0.8 && (
                     <motion.div
                         initial={{ opacity: 0 }}
@@ -463,6 +487,27 @@ export default function StarPilot() {
                         exit={{ opacity: 0 }}
                         className="fixed inset-0 bg-cyan-400 pointer-events-none z-10 blur-3xl opacity-10"
                     />
+                )}
+                {gameState === 'result' && (
+                    <div className="absolute inset-0 z-[120] flex items-center justify-center bg-black/90 backdrop-blur-2xl">
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+                            className="text-center flex flex-col gap-8"
+                        >
+                            <div>
+                                <h2 className="text-2xl mono text-cyan-500/50 uppercase tracking-[0.5em]">Mission Complete</h2>
+                                <div className="text-8xl font-black italic text-white tracking-tighter mt-4">
+                                    {score.toLocaleString()} <span className="text-2xl text-cyan-500">PTS</span>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setGameState('start')}
+                                className="px-12 py-4 border-2 border-cyan-500 text-cyan-500 font-bold uppercase tracking-widest hover:bg-cyan-500 hover:text-black transition-all"
+                            >
+                                Back to Menu
+                            </button>
+                        </motion.div>
+                    </div>
                 )}
             </AnimatePresence>
 
