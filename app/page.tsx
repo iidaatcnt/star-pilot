@@ -6,7 +6,7 @@ import { Float, PerspectiveCamera, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import Webcam from 'react-webcam';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigation, Target, Clock, Trophy } from 'lucide-react';
+import { Navigation, Target, Clock, Trophy, XCircle, Play } from 'lucide-react';
 import { useHandTracking, HandData } from './hooks/useHandTracking';
 
 const SHIP_COLOR = "#00f2ff";
@@ -173,7 +173,11 @@ const GameScene = ({ handData, config, onPass, onSpeedChange, isPaused, isActive
 
     useFrame(() => {
         if (isPaused || !isActive) {
-            if (!isActive) setSpeed(0);
+            if (!isActive && speed > 0) {
+                const nextSpeed = THREE.MathUtils.lerp(speed, 0, 0.1);
+                setSpeed(nextSpeed);
+                onSpeedChange(nextSpeed);
+            }
             return;
         }
         const targetSpeed = (handData.handPosition && handData.isPalmOpen) ? 1.0 : 0.0;
@@ -233,7 +237,7 @@ const ConfigMenu = ({ config, setConfig }: { config: Config; setConfig: (c: Conf
             </div>
             <div className="flex flex-col gap-3">
                 <label className="text-cyan-500/60 flex justify-between">Mission Time <span>{config.duration}s</span></label>
-                <input type="range" min="30" max="300" step="30" value={config.duration} onChange={e => setConfig({ ...config, duration: parseInt(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
+                <input type="range" min="30" max="300" step="10" value={config.duration} onChange={e => setConfig({ ...config, duration: parseInt(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
             </div>
         </div>
     </div>
@@ -245,20 +249,19 @@ export default function StarPilot() {
     const webcamRef = useRef<any>(null);
     const handData = useHandTracking(webcamRef);
 
-    const [gameState, setGameState] = useState<'start' | 'playing' | 'result'>('start');
+    const [gameState, setGameState] = useState<'start' | 'playing' | 'result' | 'exit'>('start');
     const [isPaused, setIsPaused] = useState(false);
     const [config, setConfig] = useState<Config>({ vSens: 1.2, hSens: 1.2, vOffset: 0.2, duration: 30 });
     const [currentSpeed, setCurrentSpeed] = useState(0);
     const [score, setScore] = useState(0);
     const [timeLeft, setTimeLeft] = useState(30);
     const [showScorePopup, setShowScorePopup] = useState(false);
-    const [lastBeepedSecond, setLastBeepedSecond] = useState(-1);
 
     const audioCtxRef = useRef<AudioContext | null>(null);
     const engineOscRef = useRef<OscillatorNode | null>(null);
     const engineGainRef = useRef<GainNode | null>(null);
 
-    // Core Timer Logic
+    // Core Timer Logic - Refactoring for stability
     useEffect(() => {
         let timer: any;
         if (gameState === 'playing' && !isPaused) {
@@ -266,21 +269,20 @@ export default function StarPilot() {
                 setTimeLeft(t => {
                     if (t <= 1) {
                         setGameState('result');
-                        setCurrentSpeed(0);
+                        clearInterval(timer); // Pre-emptive stop
                         return 0;
                     }
                     const next = t - 1;
                     // Countdown Beeps
-                    if (next <= 5 && next > 0 && next !== lastBeepedSecond) {
+                    if (next <= 5 && next > 0) {
                         playCountdownBeep(next === 1 ? 880 : 440);
-                        setLastBeepedSecond(next);
                     }
                     return next;
                 });
             }, 1000);
         }
         return () => clearInterval(timer);
-    }, [gameState, isPaused, lastBeepedSecond]);
+    }, [gameState === 'playing', isPaused]);
 
     const playCountdownBeep = (freq: number) => {
         if (audioCtxRef.current) {
@@ -344,10 +346,9 @@ export default function StarPilot() {
     }, [currentSpeed, isPaused, gameState]);
 
     const launchMission = () => {
-        setGameState('playing');
-        setTimeLeft(config.duration);
         setScore(0);
-        setLastBeepedSecond(-1);
+        setTimeLeft(config.duration);
+        setGameState('playing');
         setIsPaused(false);
         audioCtxRef.current?.resume();
     };
@@ -372,24 +373,36 @@ export default function StarPilot() {
         }
     };
 
+    const quitApp = () => {
+        setGameState('exit');
+        setTimeout(() => {
+            window.close();
+            // If window.close() doesn't work (browser security), we stay in 'exit' state.
+        }, 1000);
+    };
+
     return (
         <div
             className="relative w-full h-screen bg-black overflow-hidden font-sans select-none"
             onClick={() => { if (gameState === 'playing') setIsPaused(true); }}
         >
-            {/* Play State - Large Timer */}
+            {/* LARGE PROMINENT TIMER - CENTER TOP */}
             {gameState === 'playing' && (
-                <div className="absolute top-8 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-1 pointer-events-none">
-                    <div className="flex items-center gap-3 px-8 py-2 bg-black/40 backdrop-blur-md border border-cyan-500/30 rounded-full shadow-[0_0_30px_rgba(0,242,255,0.1)]">
-                        <Clock size={16} className={timeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-cyan-400'} />
-                        <span className={`text-4xl font-black italic mono w-32 text-center tracking-tighter ${timeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
-                            0:{timeLeft.toString().padStart(2, '0')}
+                <div className="absolute top-12 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-2 pointer-events-none scale-150">
+                    <motion.div
+                        animate={timeLeft <= 10 ? { scale: [1, 1.05, 1], rotate: [0, 1, -1, 0] } : {}}
+                        className="flex items-center gap-4 px-10 py-3 bg-black/60 border-2 border-cyan-500/50 rounded-lg shadow-[0_0_50px_rgba(0,242,255,0.2)]"
+                    >
+                        <Clock size={24} className={timeLeft <= 10 ? 'text-red-500' : 'text-cyan-400'} />
+                        <span className={`text-6xl font-black italic mono w-40 text-center tracking-tighter ${timeLeft <= 10 ? 'text-red-500' : 'text-white'}`}>
+                            {timeLeft} <span className="text-xl">S</span>
                         </span>
-                    </div>
-                    <div className="text-[10px] text-cyan-500/50 uppercase tracking-[0.4em] mono">Time_Remaining</div>
+                    </motion.div>
+                    <div className="text-[12px] text-cyan-500 uppercase tracking-[0.5em] font-bold">REMAINING_TIME</div>
                 </div>
             )}
 
+            {/* Start / Settings Screen */}
             {gameState === 'start' && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl">
                     <motion.div
@@ -403,9 +416,9 @@ export default function StarPilot() {
                         <ConfigMenu config={config} setConfig={setConfig} />
                         <button
                             onClick={(e) => { e.stopPropagation(); launchMission(); }}
-                            className="w-full py-4 bg-cyan-500 text-black font-black text-xl hover:bg-white transition-colors uppercase tracking-widest shadow-[0_0_30px_rgba(0,242,255,0.5)]"
+                            className="w-full py-4 bg-cyan-500 text-black font-black text-xl hover:bg-white transition-colors uppercase tracking-widest shadow-[0_0_30px_rgba(0,242,255,0.5)] flex items-center justify-center gap-3"
                         >
-                            Launch Mission
+                            <Play size={20} fill="currentColor" /> Launch Mission
                         </button>
                         <div className="text-[9px] text-white/30 text-center uppercase leading-loose border-t border-white/5 pt-4">
                             &gt; SPACE_KEY OR CLICK TO START<br />
@@ -416,6 +429,7 @@ export default function StarPilot() {
                 </div>
             )}
 
+            {/* Pause Menu */}
             {isPaused && gameState === 'playing' && (
                 <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto">
                     <motion.div
@@ -430,7 +444,7 @@ export default function StarPilot() {
                         <div className="flex flex-col gap-3">
                             <button
                                 onClick={(e) => { e.stopPropagation(); setIsPaused(false); }}
-                                className="w-full py-3 bg-cyan-500 text-black font-bold uppercase tracking-widest hover:bg-white transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)]"
+                                className="w-full py-4 bg-cyan-500 text-black font-bold uppercase tracking-widest hover:bg-white transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)]"
                             >
                                 Resume Mission
                             </button>
@@ -445,14 +459,14 @@ export default function StarPilot() {
                 </div>
             )}
 
-            {/* HUD Overlay */}
+            {/* HUD Overlay - Smaller and peripheral */}
             <div className="absolute inset-x-0 top-0 z-50 p-8 flex justify-between items-start pointer-events-none">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-3">
                         <div className="w-3 h-3 rounded-full bg-cyan-500 animate-pulse" />
                         <h1 className="text-3xl font-black italic tracking-tighter uppercase text-white/90">PILOT_LINK_ALPHA</h1>
                     </div>
-                    <div className="flex gap-4 opacity-70 mono text-[10px] text-cyan-400">
+                    <div className="flex gap-4 opacity-70 mono text-[10px] text-cyan-400 mt-2">
                         <motion.span
                             key={score} animate={{ scale: [1, 1.3, 1] }}
                             className="bg-cyan-500/10 px-3 py-1.5 border border-cyan-500/20 shadow-[0_0_10px_rgba(0,242,255,0.2)] flex items-center gap-2"
@@ -461,26 +475,13 @@ export default function StarPilot() {
                         </motion.span>
                         <span className="bg-cyan-500/10 px-3 py-1.5 border border-cyan-500/20">VELOCITY: {Math.round(currentSpeed * 300)} KM/S</span>
                     </div>
-                    <div className="flex gap-4 opacity-50 mono text-[9px] mt-1">
-                        <span className="flex items-center gap-1.5"><Navigation size={10} /> {handData.handPosition ? 'LOCKED' : 'SCANNING'}</span>
-                        <span className={`flex items-center gap-1.5 ${handData.isPalmOpen && handData.handPosition ? 'text-cyan-400 font-bold underline' : ''}`}>
-                            ACCEL: {handData.isPalmOpen && handData.handPosition ? 'ACTIVE' : 'READY'}
-                        </span>
-                    </div>
                 </div>
 
-                {/* Webcam / Aux Feed */}
                 <div className="bg-black/60 backdrop-blur-md border border-white/5 p-3 rounded-sm flex flex-col items-end gap-2 text-right pointer-events-auto">
                     <span className="mono text-[8px] text-cyan-500/60 tracking-[0.3em] uppercase">Visual_Aux_Feed</span>
                     <div className="rounded-sm border border-cyan-500/20 overflow-hidden relative grayscale opacity-70" style={{ width: '160px', height: '112px' }}>
                         <Webcam ref={webcamRef} className="w-full h-full object-cover" />
                         <div className="absolute inset-0 bg-cyan-900/10" />
-                        {handData.handPosition && (
-                            <motion.div
-                                className="absolute w-1.5 h-1.5 bg-cyan-400 rounded-full shadow-[0_0_8px_#0ff]"
-                                style={{ left: `${handData.handPosition.x * 100}%`, top: `${handData.handPosition.y * 100}%` }}
-                            />
-                        )}
                     </div>
                 </div>
             </div>
@@ -521,12 +522,12 @@ export default function StarPilot() {
                 {gameState === 'playing' && timeLeft <= 10 && timeLeft > 0 && (
                     <motion.div
                         key={timeLeft}
-                        initial={{ scale: 2, opacity: 0 }}
+                        initial={{ scale: 3, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         exit={{ opacity: 0 }}
                         className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[80] pointer-events-none"
                     >
-                        <span className={`text-[15rem] font-black italic tracking-tighter ${timeLeft <= 3 ? 'text-red-500' : 'text-white'} drop-shadow-[0_0_50px_rgba(255,255,255,0.2)]`}>
+                        <span className={`text-[20rem] font-black italic tracking-tighter ${timeLeft <= 3 ? 'text-red-500' : 'text-white'} drop-shadow-[0_0_80px_rgba(0,0,0,0.8)]`}>
                             {timeLeft}
                         </span>
                     </motion.div>
@@ -539,45 +540,66 @@ export default function StarPilot() {
                         exit={{ opacity: 0 }}
                         className="fixed left-1/2 top-1/2 z-[100] -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                     >
-                        <span className="text-6xl font-black italic text-cyan-400 drop-shadow-[0_0_20px_#0ff] tracking-tighter">+100</span>
+                        <span className="text-8xl font-black italic text-cyan-400 drop-shadow-[0_0_40px_#0ff] tracking-tighter">+100</span>
                     </motion.div>
                 )}
 
-                {currentSpeed > 0.8 && (
-                    <motion.div
-                        initial={{ opacity: 0 }} animate={{ opacity: 0.15 }} exit={{ opacity: 0 }}
-                        className="fixed inset-0 bg-cyan-400 pointer-events-none z-10 blur-3xl opacity-10"
-                    />
-                )}
-
-                {/* Result Screen */}
+                {/* Final Result Screen */}
                 {gameState === 'result' && (
                     <div className="absolute inset-0 z-[120] flex items-center justify-center bg-black/95 backdrop-blur-3xl">
                         <motion.div
-                            initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-                            className="text-center flex flex-col gap-10"
+                            initial={{ opacity: 0, scale: 0.9, y: 50 }} animate={{ opacity: 1, scale: 1, y: 0 }}
+                            className="text-center flex flex-col gap-12 max-w-2xl px-12"
                         >
                             <div>
-                                <h2 className="text-2xl mono text-cyan-500/50 uppercase tracking-[0.5em]">Mission Complete</h2>
-                                <div className="text-9xl font-black italic text-white tracking-tighter mt-4 flex items-center justify-center gap-6">
-                                    {score.toLocaleString()} <span className="text-3xl text-cyan-500">PTS</span>
+                                <h2 className="text-3xl mono text-cyan-500 uppercase tracking-[0.5em] mb-8">Mission Complete</h2>
+                                <div className="flex items-center justify-center gap-12 border-b border-white/10 pb-12">
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-white/40 uppercase mono text-xs mb-2">Duration</span>
+                                        <span className="text-5xl font-black text-white italic">{config.duration}s</span>
+                                    </div>
+                                    <div className="w-px h-16 bg-white/10" />
+                                    <div className="flex flex-col items-center">
+                                        <span className="text-white/40 uppercase mono text-xs mb-2">Final Score</span>
+                                        <span className="text-9xl font-black italic text-white tracking-tighter drop-shadow-[0_0_30px_#0ff]">
+                                            {score.toLocaleString()}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="flex flex-col gap-4">
+                            <div className="flex flex-col gap-6">
                                 <button
                                     onClick={() => launchMission()}
-                                    className="px-16 py-5 bg-cyan-500 text-black font-black text-2xl uppercase tracking-[0.2em] hover:bg-white transition-all shadow-[0_0_40px_rgba(0,242,255,0.5)]"
+                                    className="w-full py-6 bg-cyan-500 text-black font-black text-3xl uppercase tracking-[0.2em] hover:bg-white transition-all shadow-[0_0_50px_rgba(0,242,255,0.4)] flex items-center justify-center gap-4"
                                 >
-                                    Try Again (Space)
+                                    <Play size={24} fill="currentColor" /> Try Again (Space)
                                 </button>
-                                <button
-                                    onClick={() => setGameState('start')}
-                                    className="text-white/40 uppercase mono text-sm hover:text-white transition-colors"
-                                >
-                                    Return to Settings
-                                </button>
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={() => setGameState('start')}
+                                        className="flex-1 py-4 border border-white/20 text-white/60 font-bold uppercase tracking-widest hover:bg-white/10 transition-all text-xs"
+                                    >
+                                        Change Settings
+                                    </button>
+                                    <button
+                                        onClick={() => quitApp()}
+                                        className="flex-1 py-4 border border-red-500/30 text-red-500 font-bold uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all text-xs flex items-center justify-center gap-2"
+                                    >
+                                        <XCircle size={14} /> Finish & Close
+                                    </button>
+                                </div>
                             </div>
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Exit Farewell Screen */}
+                {gameState === 'exit' && (
+                    <div className="absolute inset-0 z-[150] bg-black flex flex-center items-center justify-center text-center">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                            <h1 className="text-4xl font-black italic text-cyan-400 mb-4 tracking-tighter">GOODBYE PILOT</h1>
+                            <p className="text-white/20 mono text-sm uppercase">Powering down systems...</p>
                         </motion.div>
                     </div>
                 )}
