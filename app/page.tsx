@@ -46,43 +46,51 @@ const SpaceShip = ({ pitch, yaw, speed }: { pitch: number; yaw: number; speed: n
     );
 };
 
-const MovingStars = ({ speed }: { speed: number }) => {
-    const count = 1000;
-    const positions = useMemo(() => {
-        const pos = new Float32Array(count * 3);
+const MovingStars = ({ speed, pitch, yaw }: { speed: number; pitch: number; yaw: number }) => {
+    const count = 200;
+    const meshRef = useRef<THREE.Group>(null);
+    const stars = useMemo(() => {
+        const temp = [];
         for (let i = 0; i < count; i++) {
-            pos[i * 3] = (Math.random() - 0.5) * 60;
-            pos[i * 3 + 1] = (Math.random() - 0.5) * 60;
-            pos[i * 3 + 2] = (Math.random() - 0.5) * 100;
+            temp.push({
+                pos: new THREE.Vector3((Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 100),
+                len: 0.5 + Math.random() * 2
+            });
         }
-        return pos;
+        return temp;
     }, []);
 
-    const pointsRef = useRef<THREE.Points>(null);
-
     useFrame((state, delta) => {
-        if (!pointsRef.current) return;
-        const pos = pointsRef.current.geometry.attributes.position.array as Float32Array;
-        for (let i = 0; i < count; i++) {
-            pos[i * 3 + 2] += (speed + 0.1) * 30 * delta; // Constant slow drift + throttle
-            if (pos[i * 3 + 2] > 20) {
-                pos[i * 3 + 2] = -80;
+        if (!meshRef.current) return;
+        meshRef.current.children.forEach((child, i) => {
+            const s = stars[i];
+            // Move towards camera
+            s.pos.z += (speed * 100 + 5) * delta;
+
+            // Influence by ship rotation
+            s.pos.x -= yaw * speed * 20 * delta;
+            s.pos.y += pitch * speed * 20 * delta;
+
+            if (s.pos.z > 20) {
+                s.pos.z = -80;
+                s.pos.x = (Math.random() - 0.5) * 60;
+                s.pos.y = (Math.random() - 0.5) * 60;
             }
-        }
-        pointsRef.current.geometry.attributes.position.needsUpdate = true;
+            child.position.copy(s.pos);
+            // Scale based on speed for "stretch" effect
+            child.scale.z = 1 + speed * 15;
+        });
     });
 
     return (
-        <points ref={pointsRef}>
-            <bufferGeometry>
-                <bufferAttribute
-                    attach="attributes-position"
-                    args={[positions, 3]}
-                    count={count}
-                />
-            </bufferGeometry>
-            <pointsMaterial size={0.12} color="white" sizeAttenuation transparent opacity={0.5} />
-        </points>
+        <group ref={meshRef}>
+            {stars.map((s, i) => (
+                <mesh key={i} rotation={[0, 0, 0]}>
+                    <boxGeometry args={[0.05, 0.05, s.len]} />
+                    <meshBasicMaterial color="#ffffff" transparent opacity={0.4} />
+                </mesh>
+            ))}
+        </group>
     );
 };
 
@@ -90,7 +98,8 @@ const GameScene = ({ handData, onSpeedChange }: { handData: HandData; onSpeedCha
     const [speed, setSpeed] = useState(0);
 
     useFrame(() => {
-        const targetSpeed = handData.isPalmOpen ? 1.0 : 0.0;
+        // Only accelerate if hand is detected AND palm is open
+        const targetSpeed = (handData.handPosition && handData.isPalmOpen) ? 1.0 : 0.0;
         const nextSpeed = THREE.MathUtils.lerp(speed, targetSpeed, 0.05);
         setSpeed(nextSpeed);
         onSpeedChange(nextSpeed);
@@ -104,11 +113,11 @@ const GameScene = ({ handData, onSpeedChange }: { handData: HandData; onSpeedCha
 
             <Suspense fallback={null}>
                 <SpaceShip pitch={handData.pitch} yaw={handData.yaw} speed={speed} />
-                <MovingStars speed={speed} />
-                <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
+                <MovingStars speed={speed} pitch={handData.pitch} yaw={handData.yaw} />
+                <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={0.2} />
             </Suspense>
 
-            <fog attach="fog" args={['#000', 5, 25]} />
+            <fog attach="fog" args={['#000', 10, 40]} />
         </>
     );
 };
