@@ -20,11 +20,11 @@ type Config = {
 
 // --- Components ---
 
-const SpaceShip = ({ pitch, yaw, speed, posX, posY }: { pitch: number; yaw: number; speed: number; posX: number; posY: number }) => {
+const SpaceShip = ({ pitch, yaw, speed, posX, posY, isPaused }: { pitch: number; yaw: number; speed: number; posX: number; posY: number; isPaused: boolean }) => {
     const meshRef = useRef<THREE.Group>(null);
 
     useFrame(() => {
-        if (!meshRef.current) return;
+        if (!meshRef.current || isPaused) return;
         meshRef.current.position.x = posX;
         meshRef.current.position.y = posY;
         // Rotation: Tilt on pitch, Roll on yaw
@@ -60,7 +60,7 @@ const SpaceShip = ({ pitch, yaw, speed, posX, posY }: { pitch: number; yaw: numb
     );
 };
 
-const Rings = ({ speed, onPass, shipX, shipY }: { speed: number; onPass: () => void; shipX: number; shipY: number }) => {
+const Rings = ({ speed, onPass, shipX, shipY, isPaused }: { speed: number; onPass: () => void; shipX: number; shipY: number; isPaused: boolean }) => {
     const count = 3;
     const rings = useMemo(() => {
         return Array.from({ length: count }).map((_, i) => ({
@@ -75,7 +75,7 @@ const Rings = ({ speed, onPass, shipX, shipY }: { speed: number; onPass: () => v
     const groupRef = useRef<THREE.Group>(null);
 
     useFrame((state, delta) => {
-        if (!groupRef.current) return;
+        if (!groupRef.current || isPaused) return;
         groupRef.current.children.forEach((child, i) => {
             const r = rings[i];
             r.z += (speed * 80 + 10) * delta;
@@ -113,7 +113,7 @@ const Rings = ({ speed, onPass, shipX, shipY }: { speed: number; onPass: () => v
     );
 };
 
-const MovingStars = ({ speed, pitch, yaw }: { speed: number; pitch: number; yaw: number }) => {
+const MovingStars = ({ speed, pitch, yaw, isPaused }: { speed: number; pitch: number; yaw: number; isPaused: boolean }) => {
     const count = 200;
     const meshRef = useRef<THREE.Group>(null);
     const stars = useMemo(() => {
@@ -128,7 +128,7 @@ const MovingStars = ({ speed, pitch, yaw }: { speed: number; pitch: number; yaw:
     }, []);
 
     useFrame((state, delta) => {
-        if (!meshRef.current) return;
+        if (!meshRef.current || isPaused) return;
         meshRef.current.children.forEach((child, i) => {
             const s = stars[i];
             s.pos.z += (speed * 100 + 5) * delta;
@@ -157,11 +157,12 @@ const MovingStars = ({ speed, pitch, yaw }: { speed: number; pitch: number; yaw:
     );
 };
 
-const GameScene = ({ handData, config, onPass, onSpeedChange }: { handData: HandData; config: Config; onPass: () => void; onSpeedChange: (s: number) => void }) => {
+const GameScene = ({ handData, config, onPass, onSpeedChange, isPaused }: { handData: HandData; config: Config; onPass: () => void; onSpeedChange: (s: number) => void; isPaused: boolean }) => {
     const [speed, setSpeed] = useState(0);
     const shipPos = useRef({ x: 0, y: 0 });
 
     useFrame(() => {
+        if (isPaused) return;
         const targetSpeed = (handData.handPosition && handData.isPalmOpen) ? 1.0 : 0.0;
         const nextSpeed = THREE.MathUtils.lerp(speed, targetSpeed, 0.05);
         setSpeed(nextSpeed);
@@ -190,10 +191,11 @@ const GameScene = ({ handData, config, onPass, onSpeedChange }: { handData: Hand
                     speed={speed}
                     posX={shipPos.current.x}
                     posY={shipPos.current.y}
+                    isPaused={isPaused}
                 />
-                <Rings speed={speed} onPass={onPass} shipX={shipPos.current.x} shipY={shipPos.current.y} />
-                <MovingStars speed={speed} pitch={handData.pitch} yaw={handData.yaw} />
-                <Stars radius={100} depth={50} count={1000} factor={4} saturation={0} fade speed={0.1} />
+                <Rings speed={speed} onPass={onPass} shipX={shipPos.current.x} shipY={shipPos.current.y} isPaused={isPaused} />
+                <MovingStars speed={speed} pitch={handData.pitch} yaw={handData.yaw} isPaused={isPaused} />
+                <Stars radius={100} depth={50} count={1000} factor={4} saturation={0} fade speed={isPaused ? 0 : 0.1} />
             </Suspense>
 
             <fog attach="fog" args={['#000', 10, 50]} />
@@ -208,6 +210,7 @@ export default function StarPilot() {
     const handData = useHandTracking(webcamRef);
 
     const [gameState, setGameState] = useState<'start' | 'playing' | 'result'>('start');
+    const [isPaused, setIsPaused] = useState(false);
     const [config, setConfig] = useState<Config>({ vSens: 1.2, hSens: 1.2, vOffset: 0.2 });
     const [currentSpeed, setCurrentSpeed] = useState(0);
     const [score, setScore] = useState(0);
@@ -219,13 +222,28 @@ export default function StarPilot() {
 
     useEffect(() => {
         let timer: any;
-        if (gameState === 'playing' && currentSpeed > 0.1) {
+        if (gameState === 'playing' && !isPaused && currentSpeed > 0.1) {
             timer = setInterval(() => {
                 setFlightTime(t => t + 1);
             }, 1000);
         }
         return () => clearInterval(timer);
-    }, [gameState, currentSpeed]);
+    }, [gameState, isPaused, currentSpeed]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.code === 'Space') {
+                if (gameState === 'start') {
+                    setGameState('playing');
+                    audioCtxRef.current?.resume();
+                } else if (gameState === 'playing') {
+                    setIsPaused(p => !p);
+                }
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [gameState]);
 
     useEffect(() => {
         if (typeof window !== 'undefined' && !audioCtxRef.current) {
@@ -258,10 +276,11 @@ export default function StarPilot() {
     useEffect(() => {
         if (engineGainRef.current && engineOscRef.current && audioCtxRef.current) {
             const now = audioCtxRef.current.currentTime;
-            engineGainRef.current.gain.setTargetAtTime(currentSpeed * 0.1, now, 0.1);
+            const targetVol = (isPaused) ? 0 : currentSpeed * 0.1;
+            engineGainRef.current.gain.setTargetAtTime(targetVol, now, 0.1);
             engineOscRef.current.frequency.setTargetAtTime(40 + currentSpeed * 120, now, 0.1);
         }
-    }, [currentSpeed]);
+    }, [currentSpeed, isPaused]);
 
     const handlePass = () => {
         setScore(s => s + 100);
@@ -280,7 +299,12 @@ export default function StarPilot() {
     };
 
     return (
-        <div className="relative w-full h-screen bg-black overflow-hidden font-sans select-none">
+        <div
+            className="relative w-full h-screen bg-black overflow-hidden font-sans select-none"
+            onClick={() => {
+                if (gameState === 'playing') setIsPaused(true);
+            }}
+        >
 
             {gameState === 'start' && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl">
@@ -323,6 +347,31 @@ export default function StarPilot() {
                             &gt; PALM_OPEN TO START ENGINE<br />
                             &gt; TILT_HAND TO STEER<br />
                             &gt; CLEAR RINGS TO SCORE
+                        </div>
+                    </motion.div>
+                </div>
+            )}
+
+            {isPaused && gameState === 'playing' && (
+                <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto">
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+                        className="bg-black/80 border border-cyan-500/50 p-10 rounded-lg flex flex-col gap-6 text-center w-[300px]"
+                    >
+                        <h2 className="text-3xl font-black italic text-cyan-400 uppercase tracking-tighter">Mission Pawsed</h2>
+                        <div className="flex flex-col gap-3">
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setIsPaused(false); }}
+                                className="w-full py-3 bg-cyan-500 text-black font-bold uppercase tracking-widest hover:bg-white transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)]"
+                            >
+                                Resume
+                            </button>
+                            <button
+                                onClick={(e) => { e.stopPropagation(); setGameState('start'); setIsPaused(false); setScore(0); setFlightTime(0); }}
+                                className="w-full py-3 border border-white/20 text-white/60 font-bold uppercase tracking-widest hover:bg-white/10 transition-all"
+                            >
+                                Quit
+                            </button>
                         </div>
                     </motion.div>
                 </div>
@@ -412,7 +461,7 @@ export default function StarPilot() {
 
             <div className="absolute inset-0 z-0">
                 <Canvas gl={{ antialias: true }}>
-                    <GameScene handData={handData} config={config} onPass={handlePass} onSpeedChange={setCurrentSpeed} />
+                    <GameScene handData={handData} config={config} onPass={handlePass} onSpeedChange={setCurrentSpeed} isPaused={isPaused} />
                 </Canvas>
             </div>
         </div>
