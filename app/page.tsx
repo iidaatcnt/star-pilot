@@ -28,7 +28,6 @@ const SpaceShip = ({ pitch, yaw, speed, posX, posY, isPaused }: { pitch: number;
         if (!meshRef.current || isPaused) return;
         meshRef.current.position.x = posX;
         meshRef.current.position.y = posY;
-        // Rotation: Tilt on pitch, Roll on yaw
         meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, pitch * 0.6, 0.1);
         meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, -yaw * 1.5, 0.1);
         meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, -yaw * 0.3, 0.1);
@@ -250,6 +249,7 @@ export default function StarPilot() {
     const [score, setScore] = useState(0);
     const [timeLeft, setTimeLeft] = useState(30);
     const [showScorePopup, setShowScorePopup] = useState(false);
+    const [lastBeepedSecond, setLastBeepedSecond] = useState(-1);
 
     const audioCtxRef = useRef<AudioContext | null>(null);
     const engineOscRef = useRef<OscillatorNode | null>(null);
@@ -262,19 +262,40 @@ export default function StarPilot() {
                 setTimeLeft(t => {
                     if (t <= 1) {
                         setGameState('result');
+                        setCurrentSpeed(0);
                         return 0;
                     }
-                    return t - 1;
+                    const next = t - 1;
+                    // Countdown Beeps for last 5 seconds
+                    if (next <= 5 && next > 0 && next !== lastBeepedSecond) {
+                        playCountdownBeep(next === 1 ? 880 : 440);
+                        setLastBeepedSecond(next);
+                    }
+                    return next;
                 });
             }, 1000);
         }
         return () => clearInterval(timer);
-    }, [gameState, isPaused]);
+    }, [gameState, isPaused, lastBeepedSecond]);
+
+    const playCountdownBeep = (freq: number) => {
+        if (audioCtxRef.current) {
+            const osc = audioCtxRef.current.createOscillator();
+            const g = audioCtxRef.current.createGain();
+            osc.frequency.setValueAtTime(freq, audioCtxRef.current.currentTime);
+            g.gain.setValueAtTime(0.05, audioCtxRef.current.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.001, audioCtxRef.current.currentTime + 0.1);
+            osc.connect(g);
+            g.connect(audioCtxRef.current.destination);
+            osc.start();
+            osc.stop(audioCtxRef.current.currentTime + 0.1);
+        }
+    };
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.code === 'Space') {
-                if (gameState === 'start') {
+                if (gameState === 'start' || gameState === 'result') {
                     launchMission();
                 } else if (gameState === 'playing') {
                     setIsPaused(p => !p);
@@ -312,7 +333,7 @@ export default function StarPilot() {
     useEffect(() => {
         if (engineGainRef.current && engineOscRef.current && audioCtxRef.current) {
             const now = audioCtxRef.current.currentTime;
-            const targetVol = (isPaused || gameState === 'result') ? 0 : currentSpeed * 0.1;
+            const targetVol = (isPaused || gameState !== 'playing') ? 0 : currentSpeed * 0.1;
             engineGainRef.current.gain.setTargetAtTime(targetVol, now, 0.1);
             engineOscRef.current.frequency.setTargetAtTime(40 + currentSpeed * 120, now, 0.1);
         }
@@ -322,6 +343,7 @@ export default function StarPilot() {
         setGameState('playing');
         setTimeLeft(config.duration);
         setScore(0);
+        setLastBeepedSecond(-1);
         audioCtxRef.current?.resume();
     };
 
@@ -404,7 +426,6 @@ export default function StarPilot() {
                 </div>
             )}
 
-            {/* HUD Layers */}
             <div className="absolute inset-x-0 top-0 z-50 p-8 flex justify-between items-start pointer-events-none">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-3">
@@ -416,7 +437,9 @@ export default function StarPilot() {
                             key={score} animate={{ scale: [1, 1.3, 1] }}
                             className="bg-cyan-500/10 px-2 py-1 border border-cyan-500/20 shadow-[0_0_10px_rgba(0,242,255,0.2)]"
                         >SCORE: {score.toString().padStart(6, '0')}</motion.span>
-                        <span className={`bg-cyan-500/10 px-2 py-1 border border-cyan-500/20 ${timeLeft < 10 ? 'text-red-500 border-red-500 animate-pulse' : ''}`}>TIME_LEFT: {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}</span>
+                        <span className={`bg-cyan-500/10 px-2 py-1 border border-cyan-500/20 ${timeLeft < 10 ? 'text-red-400 border-red-500 animate-pulse font-bold' : ''}`}>
+                            TIME_LEFT: {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                        </span>
                         <span className="bg-cyan-500/10 px-2 py-1 border border-cyan-500/20">VELOCITY: {Math.round(currentSpeed * 300)} KM/S</span>
                     </div>
                     <div className="flex gap-4 opacity-50 mono text-[9px] mt-1">
@@ -470,6 +493,20 @@ export default function StarPilot() {
             </div>
 
             <AnimatePresence>
+                {gameState === 'playing' && timeLeft <= 10 && timeLeft > 0 && (
+                    <motion.div
+                        key={timeLeft}
+                        initial={{ scale: 2, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed left-1/2 top-1/3 -translate-x-1/2 z-[80] pointer-events-none"
+                    >
+                        <span className={`text-[12rem] font-black italic tracking-tighter ${timeLeft <= 3 ? 'text-red-500' : 'text-white'} drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]`}>
+                            {timeLeft}
+                        </span>
+                    </motion.div>
+                )}
+
                 {showScorePopup && (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.5, y: -20 }}
@@ -480,6 +517,7 @@ export default function StarPilot() {
                         <span className="text-6xl font-black italic text-cyan-400 drop-shadow-[0_0_20px_#0ff] tracking-tighter">+100</span>
                     </motion.div>
                 )}
+
                 {currentSpeed > 0.8 && (
                     <motion.div
                         initial={{ opacity: 0 }}
@@ -488,15 +526,16 @@ export default function StarPilot() {
                         className="fixed inset-0 bg-cyan-400 pointer-events-none z-10 blur-3xl opacity-10"
                     />
                 )}
+
                 {gameState === 'result' && (
-                    <div className="absolute inset-0 z-[120] flex items-center justify-center bg-black/90 backdrop-blur-2xl">
+                    <div className="absolute inset-0 z-[120] flex items-center justify-center bg-black/95 backdrop-blur-3xl">
                         <motion.div
                             initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
                             className="text-center flex flex-col gap-8"
                         >
                             <div>
                                 <h2 className="text-2xl mono text-cyan-500/50 uppercase tracking-[0.5em]">Mission Complete</h2>
-                                <div className="text-8xl font-black italic text-white tracking-tighter mt-4">
+                                <div className="text-9xl font-black italic text-white tracking-tighter mt-4">
                                     {score.toLocaleString()} <span className="text-2xl text-cyan-500">PTS</span>
                                 </div>
                             </div>
