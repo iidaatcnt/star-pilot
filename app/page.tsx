@@ -6,7 +6,7 @@ import { Float, PerspectiveCamera, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import Webcam from 'react-webcam';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Navigation, Target, Clock, Trophy, XCircle, Play } from 'lucide-react';
+import { Navigation, Target, Clock, Trophy, Settings, Play } from 'lucide-react';
 import { useHandTracking, HandData } from './hooks/useHandTracking';
 
 const SHIP_COLOR = "#00f2ff";
@@ -249,19 +249,19 @@ export default function StarPilot() {
     const webcamRef = useRef<any>(null);
     const handData = useHandTracking(webcamRef);
 
-    const [gameState, setGameState] = useState<'start' | 'playing' | 'result' | 'exit'>('start');
+    const [gameState, setGameState] = useState<'start' | 'playing' | 'result'>('start');
     const [isPaused, setIsPaused] = useState(false);
     const [config, setConfig] = useState<Config>({ vSens: 1.2, hSens: 1.2, vOffset: 0.2, duration: 30 });
     const [currentSpeed, setCurrentSpeed] = useState(0);
     const [score, setScore] = useState(0);
     const [timeLeft, setTimeLeft] = useState(30);
     const [showScorePopup, setShowScorePopup] = useState(false);
+    const [lastBeepedSecond, setLastBeepedSecond] = useState(-1);
 
     const audioCtxRef = useRef<AudioContext | null>(null);
     const engineOscRef = useRef<OscillatorNode | null>(null);
     const engineGainRef = useRef<GainNode | null>(null);
 
-    // Core Timer Logic - Refactoring for stability
     useEffect(() => {
         let timer: any;
         if (gameState === 'playing' && !isPaused) {
@@ -269,11 +269,10 @@ export default function StarPilot() {
                 setTimeLeft(t => {
                     if (t <= 1) {
                         setGameState('result');
-                        clearInterval(timer); // Pre-emptive stop
+                        setCurrentSpeed(0);
                         return 0;
                     }
                     const next = t - 1;
-                    // Countdown Beeps
                     if (next <= 5 && next > 0) {
                         playCountdownBeep(next === 1 ? 880 : 440);
                     }
@@ -282,7 +281,7 @@ export default function StarPilot() {
             }, 1000);
         }
         return () => clearInterval(timer);
-    }, [gameState === 'playing', isPaused]);
+    }, [gameState, isPaused]);
 
     const playCountdownBeep = (freq: number) => {
         if (audioCtxRef.current) {
@@ -298,6 +297,19 @@ export default function StarPilot() {
         }
     };
 
+    const launchMission = () => {
+        setScore(0);
+        setTimeLeft(config.duration);
+        setGameState('playing');
+        setIsPaused(false);
+        audioCtxRef.current?.resume();
+    };
+
+    const goToSettings = () => {
+        setGameState('start');
+        setIsPaused(false);
+    };
+
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.code === 'Space') {
@@ -305,6 +317,10 @@ export default function StarPilot() {
                     launchMission();
                 } else if (gameState === 'playing') {
                     setIsPaused(p => !p);
+                }
+            } else if (e.code === 'KeyC') {
+                if (gameState === 'result' || gameState === 'playing') {
+                    goToSettings();
                 }
             }
         };
@@ -345,14 +361,6 @@ export default function StarPilot() {
         }
     }, [currentSpeed, isPaused, gameState]);
 
-    const launchMission = () => {
-        setScore(0);
-        setTimeLeft(config.duration);
-        setGameState('playing');
-        setIsPaused(false);
-        audioCtxRef.current?.resume();
-    };
-
     const handlePass = () => {
         if (gameState !== 'playing') return;
         setScore(s => s + 100);
@@ -373,20 +381,12 @@ export default function StarPilot() {
         }
     };
 
-    const quitApp = () => {
-        setGameState('exit');
-        setTimeout(() => {
-            window.close();
-            // If window.close() doesn't work (browser security), we stay in 'exit' state.
-        }, 1000);
-    };
-
     return (
         <div
             className="relative w-full h-screen bg-black overflow-hidden font-sans select-none"
             onClick={() => { if (gameState === 'playing') setIsPaused(true); }}
         >
-            {/* LARGE PROMINENT TIMER - CENTER TOP */}
+            {/* LARGE PROMINENT TIMER */}
             {gameState === 'playing' && (
                 <div className="absolute top-12 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-2 pointer-events-none scale-150">
                     <motion.div
@@ -398,13 +398,12 @@ export default function StarPilot() {
                             {timeLeft} <span className="text-xl">S</span>
                         </span>
                     </motion.div>
-                    <div className="text-[12px] text-cyan-500 uppercase tracking-[0.5em] font-bold">REMAINING_TIME</div>
                 </div>
             )}
 
             {/* Start / Settings Screen */}
             {gameState === 'start' && (
-                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl">
+                <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl pointer-events-auto" onClick={(e) => e.stopPropagation()}>
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
                         className="w-[500px] bg-black border border-cyan-500/30 p-12 rounded-lg shadow-[0_0_50px_rgba(0,242,255,0.1)] flex flex-col gap-8"
@@ -416,26 +415,20 @@ export default function StarPilot() {
                         <ConfigMenu config={config} setConfig={setConfig} />
                         <button
                             onClick={(e) => { e.stopPropagation(); launchMission(); }}
-                            className="w-full py-4 bg-cyan-500 text-black font-black text-xl hover:bg-white transition-colors uppercase tracking-widest shadow-[0_0_30px_rgba(0,242,255,0.5)] flex items-center justify-center gap-3"
+                            className="w-full py-4 bg-cyan-500 text-black font-black text-xl hover:bg-white active:bg-cyan-200 transition-colors uppercase tracking-widest shadow-[0_0_30px_rgba(0,242,255,0.5)] flex items-center justify-center gap-3 cursor-pointer"
                         >
                             <Play size={20} fill="currentColor" /> Launch Mission
                         </button>
-                        <div className="text-[9px] text-white/30 text-center uppercase leading-loose border-t border-white/5 pt-4">
-                            &gt; SPACE_KEY OR CLICK TO START<br />
-                            &gt; PALM_OPEN TO THRUST<br />
-                            &gt; TILT_HAND TO STEER
-                        </div>
                     </motion.div>
                 </div>
             )}
 
             {/* Pause Menu */}
             {isPaused && gameState === 'playing' && (
-                <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto">
+                <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto" onClick={(e) => e.stopPropagation()}>
                     <motion.div
                         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
                         className="bg-black/90 border border-cyan-500/50 p-10 rounded-lg flex flex-col gap-8 text-center w-[450px] shadow-[0_0_50px_rgba(0,0,0,1)]"
-                        onClick={(e) => e.stopPropagation()}
                     >
                         <h2 className="text-3xl font-black italic text-cyan-400 uppercase tracking-tighter">Mission Pawsed</h2>
                         <div className="border-y border-white/5 py-6">
@@ -444,13 +437,13 @@ export default function StarPilot() {
                         <div className="flex flex-col gap-3">
                             <button
                                 onClick={(e) => { e.stopPropagation(); setIsPaused(false); }}
-                                className="w-full py-4 bg-cyan-500 text-black font-bold uppercase tracking-widest hover:bg-white transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)]"
+                                className="w-full py-4 bg-cyan-500 text-black font-bold uppercase tracking-widest hover:bg-white active:bg-cyan-200 transition-all shadow-[0_0_20px_rgba(0,242,255,0.3)] cursor-pointer"
                             >
                                 Resume Mission
                             </button>
                             <button
-                                onClick={(e) => { e.stopPropagation(); setGameState('start'); setIsPaused(false); }}
-                                className="w-full py-3 border border-white/20 text-white/60 font-bold uppercase tracking-widest hover:bg-white/10 transition-all"
+                                onClick={(e) => { e.stopPropagation(); goToSettings(); }}
+                                className="w-full py-3 border border-white/20 text-white/60 font-bold uppercase tracking-widest hover:bg-white/10 transition-all cursor-pointer"
                             >
                                 Quit to Menu
                             </button>
@@ -459,7 +452,7 @@ export default function StarPilot() {
                 </div>
             )}
 
-            {/* HUD Overlay - Smaller and peripheral */}
+            {/* HUD Overlay */}
             <div className="absolute inset-x-0 top-0 z-50 p-8 flex justify-between items-start pointer-events-none">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-3">
@@ -473,7 +466,6 @@ export default function StarPilot() {
                         >
                             <Trophy size={12} /> SCORE: {score.toString().padStart(6, '0')}
                         </motion.span>
-                        <span className="bg-cyan-500/10 px-3 py-1.5 border border-cyan-500/20">VELOCITY: {Math.round(currentSpeed * 300)} KM/S</span>
                     </div>
                 </div>
 
@@ -518,7 +510,7 @@ export default function StarPilot() {
 
             {/* Global FX Overlay */}
             <AnimatePresence>
-                {/* Last 10s Countdown Overlay */}
+                {/* Last 10s Countdown */}
                 {gameState === 'playing' && timeLeft <= 10 && timeLeft > 0 && (
                     <motion.div
                         key={timeLeft}
@@ -546,7 +538,7 @@ export default function StarPilot() {
 
                 {/* Final Result Screen */}
                 {gameState === 'result' && (
-                    <div className="absolute inset-0 z-[120] flex items-center justify-center bg-black/95 backdrop-blur-3xl">
+                    <div className="absolute inset-0 z-[120] flex items-center justify-center bg-black/95 backdrop-blur-3xl pointer-events-auto" onClick={(e) => e.stopPropagation()}>
                         <motion.div
                             initial={{ opacity: 0, scale: 0.9, y: 50 }} animate={{ opacity: 1, scale: 1, y: 0 }}
                             className="text-center flex flex-col gap-12 max-w-2xl px-12"
@@ -555,12 +547,12 @@ export default function StarPilot() {
                                 <h2 className="text-3xl mono text-cyan-500 uppercase tracking-[0.5em] mb-8">Mission Complete</h2>
                                 <div className="flex items-center justify-center gap-12 border-b border-white/10 pb-12">
                                     <div className="flex flex-col items-center">
-                                        <span className="text-white/40 uppercase mono text-xs mb-2">Duration</span>
+                                        <span className="text-white/40 uppercase mono text-xs mb-2 text-center w-full">Duration</span>
                                         <span className="text-5xl font-black text-white italic">{config.duration}s</span>
                                     </div>
                                     <div className="w-px h-16 bg-white/10" />
                                     <div className="flex flex-col items-center">
-                                        <span className="text-white/40 uppercase mono text-xs mb-2">Final Score</span>
+                                        <span className="text-white/40 uppercase mono text-xs mb-2 text-center w-full">Final Score</span>
                                         <span className="text-9xl font-black italic text-white tracking-tighter drop-shadow-[0_0_30px_#0ff]">
                                             {score.toLocaleString()}
                                         </span>
@@ -570,36 +562,18 @@ export default function StarPilot() {
 
                             <div className="flex flex-col gap-6">
                                 <button
-                                    onClick={() => launchMission()}
-                                    className="w-full py-6 bg-cyan-500 text-black font-black text-3xl uppercase tracking-[0.2em] hover:bg-white transition-all shadow-[0_0_50px_rgba(0,242,255,0.4)] flex items-center justify-center gap-4"
+                                    onClick={(e) => { e.stopPropagation(); launchMission(); }}
+                                    className="w-full py-6 bg-cyan-500 text-black font-black text-3xl uppercase tracking-[0.2em] hover:bg-white active:bg-cyan-200 transition-all shadow-[0_0_50px_rgba(0,242,255,0.4)] flex items-center justify-center gap-4 cursor-pointer"
                                 >
                                     <Play size={24} fill="currentColor" /> Try Again (Space)
                                 </button>
-                                <div className="flex gap-4">
-                                    <button
-                                        onClick={() => setGameState('start')}
-                                        className="flex-1 py-4 border border-white/20 text-white/60 font-bold uppercase tracking-widest hover:bg-white/10 transition-all text-xs"
-                                    >
-                                        Change Settings
-                                    </button>
-                                    <button
-                                        onClick={() => quitApp()}
-                                        className="flex-1 py-4 border border-red-500/30 text-red-500 font-bold uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all text-xs flex items-center justify-center gap-2"
-                                    >
-                                        <XCircle size={14} /> Finish & Close
-                                    </button>
-                                </div>
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); goToSettings(); }}
+                                    className="w-full py-4 border border-cyan-500/30 text-cyan-400 font-bold uppercase tracking-widest hover:bg-cyan-500/10 hover:border-cyan-500 active:bg-cyan-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                                >
+                                    <Settings size={18} /> Change Settings (C)
+                                </button>
                             </div>
-                        </motion.div>
-                    </div>
-                )}
-
-                {/* Exit Farewell Screen */}
-                {gameState === 'exit' && (
-                    <div className="absolute inset-0 z-[150] bg-black flex flex-center items-center justify-center text-center">
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                            <h1 className="text-4xl font-black italic text-cyan-400 mb-4 tracking-tighter">GOODBYE PILOT</h1>
-                            <p className="text-white/20 mono text-sm uppercase">Powering down systems...</p>
                         </motion.div>
                     </div>
                 )}
