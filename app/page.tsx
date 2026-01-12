@@ -136,9 +136,9 @@ export default function StarPilot() {
                     </div>
                 </div>
 
-                <div className="bg-black/60 backdrop-blur-md border border-white/5 p-3 rounded-sm flex flex-col items-end gap-2 text-right">
+                <div className="bg-black-60 backdrop-blur-md border border-white/5 p-3 rounded-sm flex flex-col items-end gap-2 text-right pointer-events-auto">
                     <span className="mono text-[8px] text-cyan-500/60 tracking-[0.3em] uppercase">Visual_Aux_Feed</span>
-                    <div className="w-40 h-28 rounded-sm border border-cyan-500/20 overflow-hidden relative grayscale opacity-70">
+                    <div className="rounded-sm border border-cyan-500/20 overflow-hidden relative grayscale opacity-70" style={{ width: '160px', height: '112px' }}>
                         <Webcam ref={webcamRef} className="w-full h-full object-cover" />
                         <div className="absolute inset-0 bg-cyan-900/10" />
                         {handData.handPosition && (
