@@ -203,6 +203,24 @@ const GameScene = ({ handData, config, onPass, onSpeedChange, isPaused }: { hand
     );
 };
 
+const ConfigMenu = ({ config, setConfig }: { config: Config; setConfig: (c: Config) => void }) => (
+    <div className="flex flex-col gap-6 mono uppercase text-[11px]">
+        <div className="flex flex-col gap-3">
+            <label className="text-cyan-500/60 flex justify-between">Vertical Sensitivity <span>{config.vSens.toFixed(1)}x</span></label>
+            <input type="range" min="0.5" max="3.0" step="0.1" value={config.vSens} onChange={e => setConfig({ ...config, vSens: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
+        </div>
+        <div className="flex flex-col gap-3">
+            <label className="text-cyan-500/60 flex justify-between">Horizontal Sensitivity <span>{config.hSens.toFixed(1)}x</span></label>
+            <input type="range" min="0.5" max="3.0" step="0.1" value={config.hSens} onChange={e => setConfig({ ...config, hSens: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
+        </div>
+        <div className="flex flex-col gap-3">
+            <label className="text-cyan-500/60 flex justify-between">Hand Height Offset <span>{config.vOffset > 0 ? 'LOWER' : 'HIGHER'}</span></label>
+            <input type="range" min="-1.0" max="1.0" step="0.05" value={config.vOffset} onChange={e => setConfig({ ...config, vOffset: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
+            <p className="text-[8px] text-white/30 lowercase text-right">※ 手を高く上げにくい方は LOWER (右側) へ</p>
+        </div>
+    </div>
+);
+
 // --- Main App ---
 
 export default function StarPilot() {
@@ -317,21 +335,7 @@ export default function StarPilot() {
                             <p className="mono text-[10px] text-white/40 tracking-[0.3em] uppercase mt-4">Health Training & Space Exploration</p>
                         </div>
 
-                        <div className="flex flex-col gap-6 mono uppercase text-[11px]">
-                            <div className="flex flex-col gap-3">
-                                <label className="text-cyan-500/60 flex justify-between">Vertical Sensitivity <span>{config.vSens.toFixed(1)}x</span></label>
-                                <input type="range" min="0.5" max="3.0" step="0.1" value={config.vSens} onChange={e => setConfig({ ...config, vSens: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
-                            </div>
-                            <div className="flex flex-col gap-3">
-                                <label className="text-cyan-500/60 flex justify-between">Horizontal Sensitivity <span>{config.hSens.toFixed(1)}x</span></label>
-                                <input type="range" min="0.5" max="3.0" step="0.1" value={config.hSens} onChange={e => setConfig({ ...config, hSens: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
-                            </div>
-                            <div className="flex flex-col gap-3">
-                                <label className="text-cyan-500/60 flex justify-between">Hand Height Offset <span>{config.vOffset > 0 ? 'LOWER' : 'HIGHER'}</span></label>
-                                <input type="range" min="-1.0" max="1.0" step="0.05" value={config.vOffset} onChange={e => setConfig({ ...config, vOffset: parseFloat(e.target.value) })} className="w-full h-1 bg-cyan-900 rounded-full appearance-none cursor-pointer" />
-                                <p className="text-[8px] text-white/30 lowercase text-right">※ 手を高く上げにくい方は LOWER (右側) へ</p>
-                            </div>
-                        </div>
+                        <ConfigMenu config={config} setConfig={setConfig} />
 
                         <button
                             onClick={() => {
@@ -356,9 +360,15 @@ export default function StarPilot() {
                 <div className="absolute inset-0 z-[110] flex items-center justify-center bg-black/60 backdrop-blur-md pointer-events-auto">
                     <motion.div
                         initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
-                        className="bg-black/80 border border-cyan-500/50 p-10 rounded-lg flex flex-col gap-6 text-center w-[300px]"
+                        className="bg-black/90 border border-cyan-500/50 p-10 rounded-lg flex flex-col gap-8 text-center w-[450px] shadow-[0_0_50px_rgba(0,0,0,1)]"
+                        onClick={(e) => e.stopPropagation()}
                     >
                         <h2 className="text-3xl font-black italic text-cyan-400 uppercase tracking-tighter">Mission Pawsed</h2>
+
+                        <div className="border-y border-white/5 py-6">
+                            <ConfigMenu config={config} setConfig={setConfig} />
+                        </div>
+
                         <div className="flex flex-col gap-3">
                             <button
                                 onClick={(e) => { e.stopPropagation(); setIsPaused(false); }}
@@ -370,7 +380,7 @@ export default function StarPilot() {
                                 onClick={(e) => { e.stopPropagation(); setGameState('start'); setIsPaused(false); setScore(0); setFlightTime(0); }}
                                 className="w-full py-3 border border-white/20 text-white/60 font-bold uppercase tracking-widest hover:bg-white/10 transition-all"
                             >
-                                Quit
+                                Quit to Menu
                             </button>
                         </div>
                     </motion.div>
