@@ -6,7 +6,7 @@ import { Float, PerspectiveCamera, Stars } from '@react-three/drei';
 import * as THREE from 'three';
 import Webcam from 'react-webcam';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, Navigation, Target } from 'lucide-react';
+import { Navigation, Target, Clock, Trophy } from 'lucide-react';
 import { useHandTracking, HandData } from './hooks/useHandTracking';
 
 const SHIP_COLOR = "#00f2ff";
@@ -21,11 +21,11 @@ type Config = {
 
 // --- Components ---
 
-const SpaceShip = ({ pitch, yaw, speed, posX, posY, isPaused }: { pitch: number; yaw: number; speed: number; posX: number; posY: number; isPaused: boolean }) => {
+const SpaceShip = ({ pitch, yaw, speed, posX, posY, isPaused, isActive }: { pitch: number; yaw: number; speed: number; posX: number; posY: number; isPaused: boolean; isActive: boolean }) => {
     const meshRef = useRef<THREE.Group>(null);
 
     useFrame(() => {
-        if (!meshRef.current || isPaused) return;
+        if (!meshRef.current || isPaused || !isActive) return;
         meshRef.current.position.x = posX;
         meshRef.current.position.y = posY;
         meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, pitch * 0.6, 0.1);
@@ -35,7 +35,7 @@ const SpaceShip = ({ pitch, yaw, speed, posX, posY, isPaused }: { pitch: number;
 
     return (
         <group ref={meshRef}>
-            <Float speed={2} rotationIntensity={0.1} floatIntensity={0.2}>
+            <Float speed={isActive ? 2 : 0} rotationIntensity={0.1} floatIntensity={0.2}>
                 <group rotation={[-Math.PI / 2, 0, 0]}>
                     <mesh>
                         <coneGeometry args={[0.4, 2, 8]} />
@@ -60,7 +60,7 @@ const SpaceShip = ({ pitch, yaw, speed, posX, posY, isPaused }: { pitch: number;
     );
 };
 
-const Rings = ({ speed, onPass, shipX, shipY, isPaused }: { speed: number; onPass: () => void; shipX: number; shipY: number; isPaused: boolean }) => {
+const Rings = ({ speed, onPass, shipX, shipY, isPaused, isActive }: { speed: number; onPass: () => void; shipX: number; shipY: number; isPaused: boolean; isActive: boolean }) => {
     const count = 3;
     const rings = useMemo(() => {
         return Array.from({ length: count }).map((_, i) => ({
@@ -77,7 +77,7 @@ const Rings = ({ speed, onPass, shipX, shipY, isPaused }: { speed: number; onPas
     const groupRef = useRef<THREE.Group>(null);
 
     useFrame((state, delta) => {
-        if (!groupRef.current || isPaused) return;
+        if (!groupRef.current || isPaused || !isActive) return;
         groupRef.current.children.forEach((child, i) => {
             const r = rings[i];
             if (r.passed) {
@@ -123,7 +123,7 @@ const Rings = ({ speed, onPass, shipX, shipY, isPaused }: { speed: number; onPas
     );
 };
 
-const MovingStars = ({ speed, pitch, yaw, isPaused }: { speed: number; pitch: number; yaw: number; isPaused: boolean }) => {
+const MovingStars = ({ speed, pitch, yaw, isPaused, isActive }: { speed: number; pitch: number; yaw: number; isPaused: boolean; isActive: boolean }) => {
     const count = 200;
     const meshRef = useRef<THREE.Group>(null);
     const stars = useMemo(() => {
@@ -138,7 +138,7 @@ const MovingStars = ({ speed, pitch, yaw, isPaused }: { speed: number; pitch: nu
     }, []);
 
     useFrame((state, delta) => {
-        if (!meshRef.current || isPaused) return;
+        if (!meshRef.current || isPaused || !isActive) return;
         meshRef.current.children.forEach((child, i) => {
             const s = stars[i];
             s.pos.z += (speed * 100 + 5) * delta;
@@ -167,18 +167,20 @@ const MovingStars = ({ speed, pitch, yaw, isPaused }: { speed: number; pitch: nu
     );
 };
 
-const GameScene = ({ handData, config, onPass, onSpeedChange, isPaused }: { handData: HandData; config: Config; onPass: () => void; onSpeedChange: (s: number) => void; isPaused: boolean }) => {
+const GameScene = ({ handData, config, onPass, onSpeedChange, isPaused, isActive }: { handData: HandData; config: Config; onPass: () => void; onSpeedChange: (s: number) => void; isPaused: boolean; isActive: boolean }) => {
     const [speed, setSpeed] = useState(0);
     const shipPos = useRef({ x: 0, y: 0 });
 
     useFrame(() => {
-        if (isPaused) return;
+        if (isPaused || !isActive) {
+            if (!isActive) setSpeed(0);
+            return;
+        }
         const targetSpeed = (handData.handPosition && handData.isPalmOpen) ? 1.0 : 0.0;
         const nextSpeed = THREE.MathUtils.lerp(speed, targetSpeed, 0.05);
         setSpeed(nextSpeed);
         onSpeedChange(nextSpeed);
 
-        // Position Clamping
         const adjYaw = handData.yaw * config.hSens;
         const adjPitch = (handData.pitch + config.vOffset * 0.5) * config.vSens;
 
@@ -202,10 +204,11 @@ const GameScene = ({ handData, config, onPass, onSpeedChange, isPaused }: { hand
                     posX={shipPos.current.x}
                     posY={shipPos.current.y}
                     isPaused={isPaused}
+                    isActive={isActive}
                 />
-                <Rings speed={speed} onPass={onPass} shipX={shipPos.current.x} shipY={shipPos.current.y} isPaused={isPaused} />
-                <MovingStars speed={speed} pitch={handData.pitch} yaw={handData.yaw} isPaused={isPaused} />
-                <Stars radius={100} depth={50} count={1000} factor={4} saturation={0} fade speed={isPaused ? 0 : 0.1} />
+                <Rings speed={speed} onPass={onPass} shipX={shipPos.current.x} shipY={shipPos.current.y} isPaused={isPaused} isActive={isActive} />
+                <MovingStars speed={speed} pitch={handData.pitch} yaw={handData.yaw} isPaused={isPaused} isActive={isActive} />
+                <Stars radius={100} depth={50} count={1000} factor={4} saturation={0} fade speed={isPaused || !isActive ? 0 : 0.1} />
             </Suspense>
 
             <fog attach="fog" args={['#000', 10, 50]} />
@@ -255,6 +258,7 @@ export default function StarPilot() {
     const engineOscRef = useRef<OscillatorNode | null>(null);
     const engineGainRef = useRef<GainNode | null>(null);
 
+    // Core Timer Logic
     useEffect(() => {
         let timer: any;
         if (gameState === 'playing' && !isPaused) {
@@ -266,7 +270,7 @@ export default function StarPilot() {
                         return 0;
                     }
                     const next = t - 1;
-                    // Countdown Beeps for last 5 seconds
+                    // Countdown Beeps
                     if (next <= 5 && next > 0 && next !== lastBeepedSecond) {
                         playCountdownBeep(next === 1 ? 880 : 440);
                         setLastBeepedSecond(next);
@@ -344,10 +348,12 @@ export default function StarPilot() {
         setTimeLeft(config.duration);
         setScore(0);
         setLastBeepedSecond(-1);
+        setIsPaused(false);
         audioCtxRef.current?.resume();
     };
 
     const handlePass = () => {
+        if (gameState !== 'playing') return;
         setScore(s => s + 100);
         setShowScorePopup(true);
         setTimeout(() => setShowScorePopup(false), 800);
@@ -371,6 +377,19 @@ export default function StarPilot() {
             className="relative w-full h-screen bg-black overflow-hidden font-sans select-none"
             onClick={() => { if (gameState === 'playing') setIsPaused(true); }}
         >
+            {/* Play State - Large Timer */}
+            {gameState === 'playing' && (
+                <div className="absolute top-8 left-1/2 -translate-x-1/2 z-[70] flex flex-col items-center gap-1 pointer-events-none">
+                    <div className="flex items-center gap-3 px-8 py-2 bg-black/40 backdrop-blur-md border border-cyan-500/30 rounded-full shadow-[0_0_30px_rgba(0,242,255,0.1)]">
+                        <Clock size={16} className={timeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-cyan-400'} />
+                        <span className={`text-4xl font-black italic mono w-32 text-center tracking-tighter ${timeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-white'}`}>
+                            0:{timeLeft.toString().padStart(2, '0')}
+                        </span>
+                    </div>
+                    <div className="text-[10px] text-cyan-500/50 uppercase tracking-[0.4em] mono">Time_Remaining</div>
+                </div>
+            )}
+
             {gameState === 'start' && (
                 <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-xl">
                     <motion.div
@@ -426,6 +445,7 @@ export default function StarPilot() {
                 </div>
             )}
 
+            {/* HUD Overlay */}
             <div className="absolute inset-x-0 top-0 z-50 p-8 flex justify-between items-start pointer-events-none">
                 <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-3">
@@ -435,20 +455,22 @@ export default function StarPilot() {
                     <div className="flex gap-4 opacity-70 mono text-[10px] text-cyan-400">
                         <motion.span
                             key={score} animate={{ scale: [1, 1.3, 1] }}
-                            className="bg-cyan-500/10 px-2 py-1 border border-cyan-500/20 shadow-[0_0_10px_rgba(0,242,255,0.2)]"
-                        >SCORE: {score.toString().padStart(6, '0')}</motion.span>
-                        <span className={`bg-cyan-500/10 px-2 py-1 border border-cyan-500/20 ${timeLeft < 10 ? 'text-red-400 border-red-500 animate-pulse font-bold' : ''}`}>
-                            TIME_LEFT: {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
-                        </span>
-                        <span className="bg-cyan-500/10 px-2 py-1 border border-cyan-500/20">VELOCITY: {Math.round(currentSpeed * 300)} KM/S</span>
+                            className="bg-cyan-500/10 px-3 py-1.5 border border-cyan-500/20 shadow-[0_0_10px_rgba(0,242,255,0.2)] flex items-center gap-2"
+                        >
+                            <Trophy size={12} /> SCORE: {score.toString().padStart(6, '0')}
+                        </motion.span>
+                        <span className="bg-cyan-500/10 px-3 py-1.5 border border-cyan-500/20">VELOCITY: {Math.round(currentSpeed * 300)} KM/S</span>
                     </div>
                     <div className="flex gap-4 opacity-50 mono text-[9px] mt-1">
                         <span className="flex items-center gap-1.5"><Navigation size={10} /> {handData.handPosition ? 'LOCKED' : 'SCANNING'}</span>
-                        <span className={`flex items-center gap-1.5 ${handData.isPalmOpen && handData.handPosition ? 'text-cyan-400 font-bold' : ''}`}>ACCEL: {handData.isPalmOpen && handData.handPosition ? 'ON' : 'OFF'}</span>
+                        <span className={`flex items-center gap-1.5 ${handData.isPalmOpen && handData.handPosition ? 'text-cyan-400 font-bold underline' : ''}`}>
+                            ACCEL: {handData.isPalmOpen && handData.handPosition ? 'ACTIVE' : 'READY'}
+                        </span>
                     </div>
                 </div>
 
-                <div className="bg-black-60 backdrop-blur-md border border-white/5 p-3 rounded-sm flex flex-col items-end gap-2 text-right pointer-events-auto">
+                {/* Webcam / Aux Feed */}
+                <div className="bg-black/60 backdrop-blur-md border border-white/5 p-3 rounded-sm flex flex-col items-end gap-2 text-right pointer-events-auto">
                     <span className="mono text-[8px] text-cyan-500/60 tracking-[0.3em] uppercase">Visual_Aux_Feed</span>
                     <div className="rounded-sm border border-cyan-500/20 overflow-hidden relative grayscale opacity-70" style={{ width: '160px', height: '112px' }}>
                         <Webcam ref={webcamRef} className="w-full h-full object-cover" />
@@ -463,6 +485,7 @@ export default function StarPilot() {
                 </div>
             </div>
 
+            {/* Steering Visualizer */}
             <div className="absolute inset-x-0 bottom-10 z-50 flex justify-center pointer-events-none">
                 <div className="flex gap-16 items-end">
                     <div className="flex flex-col items-center gap-3">
@@ -492,16 +515,18 @@ export default function StarPilot() {
                 </div>
             </div>
 
+            {/* Global FX Overlay */}
             <AnimatePresence>
+                {/* Last 10s Countdown Overlay */}
                 {gameState === 'playing' && timeLeft <= 10 && timeLeft > 0 && (
                     <motion.div
                         key={timeLeft}
                         initial={{ scale: 2, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="fixed left-1/2 top-1/3 -translate-x-1/2 z-[80] pointer-events-none"
+                        className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[80] pointer-events-none"
                     >
-                        <span className={`text-[12rem] font-black italic tracking-tighter ${timeLeft <= 3 ? 'text-red-500' : 'text-white'} drop-shadow-[0_0_30px_rgba(255,255,255,0.3)]`}>
+                        <span className={`text-[15rem] font-black italic tracking-tighter ${timeLeft <= 3 ? 'text-red-500' : 'text-white'} drop-shadow-[0_0_50px_rgba(255,255,255,0.2)]`}>
                             {timeLeft}
                         </span>
                     </motion.div>
@@ -520,31 +545,39 @@ export default function StarPilot() {
 
                 {currentSpeed > 0.8 && (
                     <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 0.15 }}
-                        exit={{ opacity: 0 }}
+                        initial={{ opacity: 0 }} animate={{ opacity: 0.15 }} exit={{ opacity: 0 }}
                         className="fixed inset-0 bg-cyan-400 pointer-events-none z-10 blur-3xl opacity-10"
                     />
                 )}
 
+                {/* Result Screen */}
                 {gameState === 'result' && (
                     <div className="absolute inset-0 z-[120] flex items-center justify-center bg-black/95 backdrop-blur-3xl">
                         <motion.div
                             initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-                            className="text-center flex flex-col gap-8"
+                            className="text-center flex flex-col gap-10"
                         >
                             <div>
                                 <h2 className="text-2xl mono text-cyan-500/50 uppercase tracking-[0.5em]">Mission Complete</h2>
-                                <div className="text-9xl font-black italic text-white tracking-tighter mt-4">
-                                    {score.toLocaleString()} <span className="text-2xl text-cyan-500">PTS</span>
+                                <div className="text-9xl font-black italic text-white tracking-tighter mt-4 flex items-center justify-center gap-6">
+                                    {score.toLocaleString()} <span className="text-3xl text-cyan-500">PTS</span>
                                 </div>
                             </div>
-                            <button
-                                onClick={() => setGameState('start')}
-                                className="px-12 py-4 border-2 border-cyan-500 text-cyan-500 font-bold uppercase tracking-widest hover:bg-cyan-500 hover:text-black transition-all"
-                            >
-                                Back to Menu
-                            </button>
+
+                            <div className="flex flex-col gap-4">
+                                <button
+                                    onClick={() => launchMission()}
+                                    className="px-16 py-5 bg-cyan-500 text-black font-black text-2xl uppercase tracking-[0.2em] hover:bg-white transition-all shadow-[0_0_40px_rgba(0,242,255,0.5)]"
+                                >
+                                    Try Again (Space)
+                                </button>
+                                <button
+                                    onClick={() => setGameState('start')}
+                                    className="text-white/40 uppercase mono text-sm hover:text-white transition-colors"
+                                >
+                                    Return to Settings
+                                </button>
+                            </div>
                         </motion.div>
                     </div>
                 )}
@@ -555,7 +588,11 @@ export default function StarPilot() {
 
             <div className="absolute inset-0 z-0">
                 <Canvas gl={{ antialias: true }}>
-                    <GameScene handData={handData} config={config} onPass={handlePass} onSpeedChange={setCurrentSpeed} isPaused={isPaused} />
+                    <GameScene
+                        handData={handData} config={config} onPass={handlePass}
+                        onSpeedChange={setCurrentSpeed} isPaused={isPaused}
+                        isActive={gameState === 'playing'}
+                    />
                 </Canvas>
             </div>
         </div>
