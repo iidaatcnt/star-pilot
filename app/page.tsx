@@ -77,9 +77,8 @@ const MovingStars = ({ speed }: { speed: number }) => {
             <bufferGeometry>
                 <bufferAttribute
                     attach="attributes-position"
+                    args={[positions, 3]}
                     count={count}
-                    array={positions}
-                    itemSize={3}
                 />
             </bufferGeometry>
             <pointsMaterial size={0.12} color="white" sizeAttenuation transparent opacity={0.5} />
