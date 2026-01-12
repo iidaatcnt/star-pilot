@@ -16,42 +16,88 @@ const GLOW_COLOR = "#0072ff";
 
 const SpaceShip = ({ pitch, yaw, speed }: { pitch: number; yaw: number; speed: number }) => {
     const meshRef = useRef<THREE.Group>(null);
+    const targetPos = useRef(new THREE.Vector3(0, 0, 0));
 
     useFrame(() => {
         if (!meshRef.current) return;
-        // Steering feel: Tail view. Pitch up -> tilt up. Yaw right -> turn right.
-        meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, pitch * 0.5, 0.1);
-        meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, yaw * 0.5, 0.1);
-        meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, -yaw * 0.8, 0.1);
+
+        // Position movement based on steer
+        targetPos.current.x = THREE.MathUtils.lerp(targetPos.current.x, -yaw * 8, 0.05);
+        targetPos.current.y = THREE.MathUtils.lerp(targetPos.current.y, pitch * 6, 0.05);
+
+        meshRef.current.position.x = targetPos.current.x;
+        meshRef.current.position.y = targetPos.current.y;
+
+        // Rotation: Roll on yaw, Tilt on pitch
+        meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, pitch * 0.8, 0.1);
+        meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, -yaw * 1.5, 0.1);
+        meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, -yaw * 0.3, 0.1);
     });
 
     return (
         <group ref={meshRef}>
-            <Float speed={2} rotationIntensity={0.2} floatIntensity={0.5}>
-                <group rotation={[-Math.PI / 2, 0, 0]}> {/* Pointing into screen (-Z) */}
-                    {/* Main Body */}
+            <Float speed={2} rotationIntensity={0.1} floatIntensity={0.2}>
+                <group rotation={[-Math.PI / 2, 0, 0]}>
                     <mesh>
                         <coneGeometry args={[0.4, 2, 8]} />
                         <meshStandardMaterial color={SHIP_COLOR} emissive={SHIP_COLOR} emissiveIntensity={0.5} />
                     </mesh>
-                    {/* Wings */}
                     <mesh position={[0, -0.2, 0]}>
-                        <boxGeometry args={[2.2, 0.05, 0.8]} />
+                        <boxGeometry args={[2.5, 0.05, 0.8]} />
                         <meshStandardMaterial color={SHIP_COLOR} transparent opacity={0.8} />
                     </mesh>
-                    {/* Cockpit - Top of ship */}
                     <mesh position={[0, 0.4, 0.3]}>
-                        <sphereGeometry args={[0.2, 16, 16]} />
-                        <meshStandardMaterial color="#ffffff" transparent opacity={0.4} />
+                        <sphereGeometry args={[0.22, 16, 16]} />
+                        <meshStandardMaterial color="#ffffff" transparent opacity={0.5} />
                     </mesh>
-                    {/* Engine Glow - At the bottom of cone (facing camera) */}
-                    <pointLight position={[0, -1, 0]} color={GLOW_COLOR} intensity={speed * 10} distance={10} />
+                    <pointLight position={[0, -1, 0]} color={GLOW_COLOR} intensity={speed * 12} distance={10} />
                     <mesh position={[0, -1, 0]}>
-                        <sphereGeometry args={[0.25, 16, 16]} />
+                        <sphereGeometry args={[0.3, 16, 16]} />
                         <meshBasicMaterial color={GLOW_COLOR} transparent opacity={speed > 0.1 ? 1.0 : 0.2} />
                     </mesh>
                 </group>
             </Float>
+        </group>
+    );
+};
+
+const Rings = ({ speed }: { speed: number }) => {
+    const count = 3;
+    const rings = useMemo(() => {
+        return Array.from({ length: count }).map((_, i) => ({
+            id: i,
+            z: -30 - i * 30,
+            x: (Math.random() - 0.5) * 10,
+            y: (Math.random() - 0.5) * 8,
+        }));
+    }, []);
+
+    const groupRef = useRef<THREE.Group>(null);
+
+    useFrame((state, delta) => {
+        if (!groupRef.current) return;
+        groupRef.current.children.forEach((child, i) => {
+            const r = rings[i];
+            r.z += (speed * 80 + 10) * delta;
+
+            if (r.z > 20) {
+                r.z = -70;
+                r.x = (Math.random() - 0.5) * 15;
+                r.y = (Math.random() - 0.5) * 10;
+            }
+            child.position.set(r.x, r.y, r.z);
+            child.rotation.z += delta * 0.5;
+        });
+    });
+
+    return (
+        <group ref={groupRef}>
+            {rings.map((r) => (
+                <mesh key={r.id}>
+                    <torusGeometry args={[4, 0.1, 16, 32]} />
+                    <meshBasicMaterial color="#00f2ff" transparent opacity={0.3} />
+                </mesh>
+            ))}
         </group>
     );
 };
@@ -117,17 +163,18 @@ const GameScene = ({ handData, onSpeedChange }: { handData: HandData; onSpeedCha
 
     return (
         <>
-            <PerspectiveCamera makeDefault position={[0, 0.5, 6]} fov={60} />
+            <PerspectiveCamera makeDefault position={[0, 3, 8]} fov={65} rotation={[-0.2, 0, 0]} />
             <ambientLight intensity={1.5} />
             <pointLight position={[10, 10, 10]} intensity={2} />
 
             <Suspense fallback={null}>
                 <SpaceShip pitch={handData.pitch} yaw={handData.yaw} speed={speed} />
+                <Rings speed={speed} />
                 <MovingStars speed={speed} pitch={handData.pitch} yaw={handData.yaw} />
-                <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={0.2} />
+                <Stars radius={100} depth={50} count={1000} factor={4} saturation={0} fade speed={0.1} />
             </Suspense>
 
-            <fog attach="fog" args={['#000', 5, 30]} />
+            <fog attach="fog" args={['#000', 10, 50]} />
         </>
     );
 };
