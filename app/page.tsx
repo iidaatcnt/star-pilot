@@ -19,28 +19,38 @@ const SpaceShip = ({ pitch, yaw, speed }: { pitch: number; yaw: number; speed: n
 
     useFrame(() => {
         if (!meshRef.current) return;
-        // Smoothly rotate ship based on input
+        // Steering feel: Tail view. Pitch up -> tilt up. Yaw right -> turn right.
         meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, pitch * 0.5, 0.1);
         meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, yaw * 0.5, 0.1);
-        meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, -yaw * 0.8, 0.1); // Roll on yaw
+        meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, -yaw * 0.8, 0.1);
     });
 
     return (
         <group ref={meshRef}>
-            <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
-                <mesh>
-                    <coneGeometry args={[0.5, 2, 8]} />
-                    <meshStandardMaterial color={SHIP_COLOR} emissive={SHIP_COLOR} emissiveIntensity={0.5} />
-                </mesh>
-                <mesh position={[0, -0.2, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                    <planeGeometry args={[2, 0.5]} />
-                    <meshStandardMaterial color={SHIP_COLOR} side={THREE.DoubleSide} transparent opacity={0.8} />
-                </mesh>
-                <pointLight position={[0, -1, 0]} color={GLOW_COLOR} intensity={speed * 5} distance={5} />
-                <mesh position={[0, -1, 0]}>
-                    <sphereGeometry args={[0.2, 16, 16]} />
-                    <meshBasicMaterial color={GLOW_COLOR} transparent opacity={speed > 0.1 ? 0.8 : 0.2} />
-                </mesh>
+            <Float speed={2} rotationIntensity={0.2} floatIntensity={0.5}>
+                <group rotation={[-Math.PI / 2, 0, 0]}> {/* Pointing into screen (-Z) */}
+                    {/* Main Body */}
+                    <mesh>
+                        <coneGeometry args={[0.4, 2, 8]} />
+                        <meshStandardMaterial color={SHIP_COLOR} emissive={SHIP_COLOR} emissiveIntensity={0.5} />
+                    </mesh>
+                    {/* Wings */}
+                    <mesh position={[0, -0.2, 0]}>
+                        <boxGeometry args={[2.2, 0.05, 0.8]} />
+                        <meshStandardMaterial color={SHIP_COLOR} transparent opacity={0.8} />
+                    </mesh>
+                    {/* Cockpit - Top of ship */}
+                    <mesh position={[0, 0.4, 0.3]}>
+                        <sphereGeometry args={[0.2, 16, 16]} />
+                        <meshStandardMaterial color="#ffffff" transparent opacity={0.4} />
+                    </mesh>
+                    {/* Engine Glow - At the bottom of cone (facing camera) */}
+                    <pointLight position={[0, -1, 0]} color={GLOW_COLOR} intensity={speed * 10} distance={10} />
+                    <mesh position={[0, -1, 0]}>
+                        <sphereGeometry args={[0.25, 16, 16]} />
+                        <meshBasicMaterial color={GLOW_COLOR} transparent opacity={speed > 0.1 ? 1.0 : 0.2} />
+                    </mesh>
+                </group>
             </Float>
         </group>
     );
@@ -107,7 +117,7 @@ const GameScene = ({ handData, onSpeedChange }: { handData: HandData; onSpeedCha
 
     return (
         <>
-            <PerspectiveCamera makeDefault position={[0, 2, 8]} fov={60} />
+            <PerspectiveCamera makeDefault position={[0, 0.5, 6]} fov={60} />
             <ambientLight intensity={1.5} />
             <pointLight position={[10, 10, 10]} intensity={2} />
 
@@ -117,7 +127,7 @@ const GameScene = ({ handData, onSpeedChange }: { handData: HandData; onSpeedCha
                 <Stars radius={100} depth={50} count={2000} factor={4} saturation={0} fade speed={0.2} />
             </Suspense>
 
-            <fog attach="fog" args={['#000', 10, 40]} />
+            <fog attach="fog" args={['#000', 5, 30]} />
         </>
     );
 };
