@@ -21,16 +21,16 @@ const SpaceShip = ({ pitch, yaw, speed }: { pitch: number; yaw: number; speed: n
     useFrame(() => {
         if (!meshRef.current) return;
 
-        // Position movement based on steer
-        targetPos.current.x = THREE.MathUtils.lerp(targetPos.current.x, -yaw * 8, 0.05);
-        targetPos.current.y = THREE.MathUtils.lerp(targetPos.current.y, pitch * 6, 0.05);
+        // Position movement based on steer - CLAMPED to stay inside
+        targetPos.current.x = THREE.MathUtils.lerp(targetPos.current.x, -yaw * 6.5, 0.05);
+        targetPos.current.y = THREE.MathUtils.lerp(targetPos.current.y, pitch * 4.5, 0.05);
 
-        meshRef.current.position.x = targetPos.current.x;
-        meshRef.current.position.y = targetPos.current.y;
+        meshRef.current.position.x = THREE.MathUtils.clamp(targetPos.current.x, -5, 5);
+        meshRef.current.position.y = THREE.MathUtils.clamp(targetPos.current.y, -3, 3);
 
         // Rotation: Roll on yaw, Tilt on pitch
-        meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, pitch * 0.8, 0.1);
-        meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, -yaw * 1.5, 0.1);
+        meshRef.current.rotation.x = THREE.MathUtils.lerp(meshRef.current.rotation.x, pitch * 0.6, 0.1);
+        meshRef.current.rotation.z = THREE.MathUtils.lerp(meshRef.current.rotation.z, -yaw * 1.2, 0.1);
         meshRef.current.rotation.y = THREE.MathUtils.lerp(meshRef.current.rotation.y, -yaw * 0.3, 0.1);
     });
 
@@ -50,7 +50,7 @@ const SpaceShip = ({ pitch, yaw, speed }: { pitch: number; yaw: number; speed: n
                         <sphereGeometry args={[0.22, 16, 16]} />
                         <meshStandardMaterial color="#ffffff" transparent opacity={0.5} />
                     </mesh>
-                    <pointLight position={[0, -1, 0]} color={GLOW_COLOR} intensity={speed * 12} distance={10} />
+                    <pointLight position={[0, -1, 0]} color={GLOW_COLOR} intensity={speed * 15} distance={15} />
                     <mesh position={[0, -1, 0]}>
                         <sphereGeometry args={[0.3, 16, 16]} />
                         <meshBasicMaterial color={GLOW_COLOR} transparent opacity={speed > 0.1 ? 1.0 : 0.2} />
@@ -61,14 +61,15 @@ const SpaceShip = ({ pitch, yaw, speed }: { pitch: number; yaw: number; speed: n
     );
 };
 
-const Rings = ({ speed }: { speed: number }) => {
+const Rings = ({ speed, onPass, shipX, shipY }: { speed: number; onPass: () => void; shipX: number; shipY: number }) => {
     const count = 3;
     const rings = useMemo(() => {
         return Array.from({ length: count }).map((_, i) => ({
             id: i,
             z: -30 - i * 30,
-            x: (Math.random() - 0.5) * 10,
-            y: (Math.random() - 0.5) * 8,
+            x: (Math.random() - 0.5) * 12,
+            y: (Math.random() - 0.5) * 10,
+            passed: false
         }));
     }, []);
 
@@ -80,10 +81,21 @@ const Rings = ({ speed }: { speed: number }) => {
             const r = rings[i];
             r.z += (speed * 80 + 10) * delta;
 
+            // Collision detection - when ring is near camera
+            if (!r.passed && r.z > 5 && r.z < 8) {
+                const dx = Math.abs(r.x - shipX);
+                const dy = Math.abs(r.y - shipY);
+                if (dx < 4 && dy < 4) {
+                    r.passed = true;
+                    onPass();
+                }
+            }
+
             if (r.z > 20) {
                 r.z = -70;
-                r.x = (Math.random() - 0.5) * 15;
-                r.y = (Math.random() - 0.5) * 10;
+                r.x = (Math.random() - 0.5) * 18;
+                r.y = (Math.random() - 0.5) * 12;
+                r.passed = false;
             }
             child.position.set(r.x, r.y, r.z);
             child.rotation.z += delta * 0.5;
@@ -95,7 +107,7 @@ const Rings = ({ speed }: { speed: number }) => {
             {rings.map((r) => (
                 <mesh key={r.id}>
                     <torusGeometry args={[4, 0.1, 16, 32]} />
-                    <meshBasicMaterial color="#00f2ff" transparent opacity={0.3} />
+                    <meshBasicMaterial color={r.passed ? "#fff" : "#00f2ff"} transparent opacity={0.3} />
                 </mesh>
             ))}
         </group>
@@ -150,8 +162,9 @@ const MovingStars = ({ speed, pitch, yaw }: { speed: number; pitch: number; yaw:
     );
 };
 
-const GameScene = ({ handData, onSpeedChange }: { handData: HandData; onSpeedChange: (s: number) => void }) => {
+const GameScene = ({ handData, onPass, onSpeedChange }: { handData: HandData; onPass: () => void; onSpeedChange: (s: number) => void }) => {
     const [speed, setSpeed] = useState(0);
+    const shipPos = useRef({ x: 0, y: 0 });
 
     useFrame(() => {
         // Only accelerate if hand is detected AND palm is open
@@ -159,6 +172,12 @@ const GameScene = ({ handData, onSpeedChange }: { handData: HandData; onSpeedCha
         const nextSpeed = THREE.MathUtils.lerp(speed, targetSpeed, 0.05);
         setSpeed(nextSpeed);
         onSpeedChange(nextSpeed);
+
+        // Track ship position for ring collision
+        const targetX = -handData.yaw * 6.5;
+        const targetY = handData.pitch * 4.5;
+        shipPos.current.x = THREE.MathUtils.clamp(targetX, -5, 5);
+        shipPos.current.y = THREE.MathUtils.clamp(targetY, -3, 3);
     });
 
     return (
@@ -169,7 +188,7 @@ const GameScene = ({ handData, onSpeedChange }: { handData: HandData; onSpeedCha
 
             <Suspense fallback={null}>
                 <SpaceShip pitch={handData.pitch} yaw={handData.yaw} speed={speed} />
-                <Rings speed={speed} />
+                <Rings speed={speed} onPass={onPass} shipX={shipPos.current.x} shipY={shipPos.current.y} />
                 <MovingStars speed={speed} pitch={handData.pitch} yaw={handData.yaw} />
                 <Stars radius={100} depth={50} count={1000} factor={4} saturation={0} fade speed={0.1} />
             </Suspense>
@@ -185,6 +204,67 @@ export default function StarPilot() {
     const webcamRef = useRef<any>(null);
     const handData = useHandTracking(webcamRef);
     const [currentSpeed, setCurrentSpeed] = useState(0);
+    const [score, setScore] = useState(0);
+
+    // Audio Refs
+    const audioCtxRef = useRef<AudioContext | null>(null);
+    const engineOscRef = useRef<OscillatorNode | null>(null);
+    const engineGainRef = useRef<GainNode | null>(null);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined' && !audioCtxRef.current) {
+            audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+            // Simple Engine Sound
+            const osc = audioCtxRef.current.createOscillator();
+            const gain = audioCtxRef.current.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(50, audioCtxRef.current.currentTime);
+            gain.gain.setValueAtTime(0, audioCtxRef.current.currentTime);
+
+            const filter = audioCtxRef.current.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(400, audioCtxRef.current.currentTime);
+
+            osc.connect(filter);
+            filter.connect(gain);
+            gain.connect(audioCtxRef.current.destination);
+            osc.start();
+
+            engineOscRef.current = osc;
+            engineGainRef.current = gain;
+        }
+        return () => {
+            engineOscRef.current?.stop();
+            audioCtxRef.current?.close();
+        };
+    }, []);
+
+    // Update sound based on speed
+    useEffect(() => {
+        if (engineGainRef.current && engineOscRef.current && audioCtxRef.current) {
+            const now = audioCtxRef.current.currentTime;
+            engineGainRef.current.gain.setTargetAtTime(currentSpeed * 0.1, now, 0.1);
+            engineOscRef.current.frequency.setTargetAtTime(50 + currentSpeed * 100, now, 0.1);
+        }
+    }, [currentSpeed]);
+
+    const handlePass = () => {
+        setScore(s => s + 100);
+        // Success Beep
+        if (audioCtxRef.current) {
+            const osc = audioCtxRef.current.createOscillator();
+            const g = audioCtxRef.current.createGain();
+            osc.frequency.setValueAtTime(880, audioCtxRef.current.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(440, audioCtxRef.current.currentTime + 0.2);
+            g.gain.setValueAtTime(0.1, audioCtxRef.current.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.01, audioCtxRef.current.currentTime + 0.2);
+            osc.connect(g);
+            g.connect(audioCtxRef.current.destination);
+            osc.start();
+            osc.stop(audioCtxRef.current.currentTime + 0.2);
+        }
+    };
 
     return (
         <div className="relative w-full h-screen bg-black overflow-hidden font-sans select-none">
@@ -195,10 +275,13 @@ export default function StarPilot() {
                         <div className="w-3 h-3 rounded-full bg-cyan-500 animate-pulse" />
                         <h1 className="text-3xl font-black italic tracking-tighter uppercase text-white/90">PILOT_LINK_ALPHA</h1>
                     </div>
-                    <div className="flex gap-4 opacity-50 mono text-[9px]">
+                    <div className="flex gap-4 opacity-70 mono text-[10px] text-cyan-400">
+                        <span className="bg-cyan-500/10 px-2 py-1 border border-cyan-500/20">SCORE: {score.toString().padStart(6, '0')}</span>
+                        <span className="bg-cyan-500/10 px-2 py-1 border border-cyan-500/20">VELOCITY: {Math.round(currentSpeed * 300)} KM/S</span>
+                    </div>
+                    <div className="flex gap-4 opacity-50 mono text-[9px] mt-1">
                         <span className="flex items-center gap-1.5"><Navigation size={10} /> {handData.handPosition ? 'LOCKED' : 'SCANNING'}</span>
-                        <span className="flex items-center gap-1.5"><Zap size={10} /> POWER: {Math.round(currentSpeed * 100)}%</span>
-                        <span className={`flex items-center gap-1.5 ${handData.isPalmOpen ? 'text-cyan-400' : ''}`}>ACCEL: {handData.isPalmOpen ? 'ON' : 'OFF'}</span>
+                        <span className={`flex items-center gap-1.5 ${handData.isPalmOpen ? 'text-cyan-400 font-bold' : ''}`}>ACCEL: {handData.isPalmOpen ? 'ON' : 'OFF'}</span>
                     </div>
                 </div>
 
@@ -273,7 +356,7 @@ export default function StarPilot() {
             {/* 3D Scene */}
             <div className="absolute inset-0 z-0">
                 <Canvas gl={{ antialias: true }}>
-                    <GameScene handData={handData} onSpeedChange={setCurrentSpeed} />
+                    <GameScene handData={handData} onPass={handlePass} onSpeedChange={setCurrentSpeed} />
                 </Canvas>
             </div>
 
